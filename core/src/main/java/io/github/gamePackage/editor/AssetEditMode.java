@@ -138,6 +138,13 @@ class AssetEditMode extends EditorMode {
         EditorContext.onChange(noCollisionButton, () -> {
             if (syncingUi || meta == null) return;
             meta.noCollision = noCollisionButton.isChecked();
+            // A collisionless asset keeps no collision shapes.
+            if (meta.noCollision && meta.collisions.length > 0) {
+                int removed = meta.collisions.length;
+                meta.collisions = new float[0][];
+                activeShape[Tool.COLLISION.ordinal()] = 0;
+                ctx.setStatus("Removed " + removed + " collision shape" + (removed == 1 ? "" : "s") + ".");
+            }
             markMetaDirty();
         });
         bounds.body.add(noCollisionButton).row();
@@ -467,6 +474,7 @@ class AssetEditMode extends EditorMode {
 
     private void newShape() {
         if (!editingShapes()) return;
+        collisionAdded();
         float[][] list = shapes(tool);
         // Reuse an empty shape at the end instead of piling up empty ones.
         if (list.length > 0 && list[list.length - 1].length == 0) {
@@ -479,6 +487,16 @@ class AssetEditMode extends EditorMode {
         setShapes(tool, grown);
         setActive(list.length);
         ctx.setStatus("New shape: click to add its points.");
+    }
+
+    /** Adding collision to an asset marked "No collision needed" clears that mark. */
+    private void collisionAdded() {
+        if (tool != Tool.COLLISION || !meta.noCollision) return;
+        meta.noCollision = false;
+        syncingUi = true;
+        noCollisionButton.setChecked(false);
+        syncingUi = false;
+        ctx.setStatus("Collision added, so \"No collision needed\" was turned off.");
     }
 
     private void deleteShape() {
@@ -539,6 +557,7 @@ class AssetEditMode extends EditorMode {
 
     /** Adds a point to the selected shape, inserting it into the nearest edge once the shape has three points. */
     private int insertVertex(float worldX, float worldY) {
+        collisionAdded();
         if (shapes(tool).length == 0) newShape();
         int shape = active();
         float[] points = shapes(tool)[shape];
