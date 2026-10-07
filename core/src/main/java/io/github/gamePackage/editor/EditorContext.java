@@ -57,13 +57,6 @@ class EditorContext {
 
     // ---------------------------------------------------------------- panel building
 
-    /** A coloured heading with a little space above it. */
-    void section(Table panel, String title) {
-        Label label = new Label(title, skin);
-        label.setColor(0.55f, 0.75f, 1f, 1f);
-        panel.add(label).padTop(10).row();
-    }
-
     Label help(String text) {
         Label label = new Label(text, skin, "dim");
         label.setWrap(true);

@@ -23,6 +23,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Array;
@@ -34,6 +35,8 @@ import io.github.gamePackage.assets.AssetBaker;
 import io.github.gamePackage.assets.GameFiles;
 import io.github.gamePackage.assets.SpriteAsset;
 import io.github.gamePackage.screens.TitleScreen;
+
+import java.util.Locale;
 
 /**
  * The asset editor: an asset list on the left, the canvas in the middle, and the current mode's panel on the right.
@@ -58,6 +61,8 @@ public class AssetEditorScreen extends ScreenAdapter {
 
     private FlagList assetList;
     private Label listTitle;
+    private TextField filterField;
+    private Table footerSlot;
     private Table checkSlot;
     private Table checkControls;
     private Label checkSummary;
@@ -226,8 +231,12 @@ public class AssetEditorScreen extends ScreenAdapter {
         EditorContext.onChange(sceneTab, () -> {
             if (sceneTab.isChecked()) setMode(sceneMode);
         });
-        left.add(ctx.row(assetTab, sceneTab)).padBottom(10).row();
+        left.add(ctx.row(assetTab, sceneTab)).padBottom(8).row();
 
+        filterField = new TextField("", ctx.skin);
+        filterField.setMessageText("Filter assets...");
+        filterField.setTextFieldListener((field, c) -> refreshList());
+        left.add(filterField).row();
         listTitle = new Label("", ctx.skin, "dim");
         left.add(listTitle).row();
         assetList = new FlagList(ctx.skin);
@@ -255,13 +264,13 @@ public class AssetEditorScreen extends ScreenAdapter {
         });
         checkControls = new Table();
         checkControls.defaults().growX().padBottom(6);
-        checkControls.add(ctx.row(ctx.button("Check all assets", this::runCheck), flaggedOnlyButton)).row();
+        checkControls.add(ctx.row(ctx.button("Check all", this::runCheck), flaggedOnlyButton)).row();
         checkControls.add(checkSummary).row();
         checkSlot = new Table();
-        left.add(checkSlot).padTop(4).row();
+        left.add(checkSlot).padTop(2).row();
 
-        left.add(ctx.button("Rescan assets folder", this::rescan)).padTop(4).row();
-        left.add(ctx.button("Back to title", this::exitToTitle)).row();
+        left.add(ctx.row(ctx.button("Rescan folder", this::rescan), ctx.button("Back to title", this::exitToTitle)))
+            .padTop(2).row();
 
         Table right = new Table();
         right.setBackground(ctx.skin.getDrawable("panel"));
@@ -272,7 +281,9 @@ public class AssetEditorScreen extends ScreenAdapter {
         modePanelPane.setScrollingDisabled(true, false);
         modePanelPane.setScrollbarsOnTop(false);
         right.add(modePanelPane).grow().row();
-        right.add(ctx.status).growX().padTop(8);
+        footerSlot = new Table();
+        right.add(footerSlot).growX().padTop(8).padRight(8).row();
+        right.add(ctx.status).growX().padTop(6).padRight(8);
 
         root.add(left).width(EditorContext.LEFT_WIDTH).growY();
         root.add(buildZoomBar()).expand().top().left().pad(10);
@@ -322,26 +333,37 @@ public class AssetEditorScreen extends ScreenAdapter {
 
     private void showModeUi() {
         modePanelPane.setActor(mode.panel());
+        footerSlot.clearChildren();
+        if (mode.footer() != null) footerSlot.add(mode.footer()).growX();
         checkSlot.clearChildren();
         if (mode == assetMode) checkSlot.add(checkControls).growX();
-        listTitle.setText(mode == assetMode ? "Assets: pick one to edit" : "Assets: pick one to place");
+        updateListTitle();
+    }
+
+    private void updateListTitle() {
+        String action = mode == assetMode ? "pick one to edit" : "pick one to place";
+        listTitle.setText("Assets (" + assetList.getItems().size + "): " + action);
     }
 
     // ---------------------------------------------------------------- asset list and checking
 
     /** Rebuilds the list from the catalog, applying flags and the "flagged only" filter. */
     private void refreshList() {
+        String filter = filterField.getText().trim().toLowerCase(Locale.ROOT);
         Array<AssetListItem> items = new Array<>();
         for (SpriteAsset asset : allAssets()) {
             AssetListItem item = new AssetListItem(asset);
             item.issues = checkRun ? flags.get(asset.id) : null;
-            if (!flaggedOnly || item.issues != null) items.add(item);
+            if (flaggedOnly && item.issues == null) continue;
+            if (!filter.isEmpty() && !asset.toString().toLowerCase(Locale.ROOT).contains(filter)) continue;
+            items.add(item);
         }
         syncingList = true;
         assetList.setItems(items);
         syncingList = false;
         selectInList(mode.listSelection());
         updateCheckSummary();
+        updateListTitle();
     }
 
     private void selectInList(SpriteAsset asset) {
@@ -555,6 +577,8 @@ public class AssetEditorScreen extends ScreenAdapter {
         @Override
         public boolean keyDown(int keycode) {
             if (starting()) return true;
+            // Typing in a text box (filter, number fields) must not trigger editor shortcuts.
+            if (stage.getKeyboardFocus() instanceof TextField) return false;
             boolean ctrl = Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)
                 || Gdx.input.isKeyPressed(Input.Keys.CONTROL_RIGHT);
             if (ctrl && keycode == Input.Keys.S) {

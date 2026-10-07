@@ -20,6 +20,8 @@ background from every object that still has one (writing its processed image), s
 check, so new images are ready straight away.
 
 - Zoom with the mouse wheel over the canvas or the -/+/Fit buttons at its top-left; drag empty space to pan.
+- Panels are split into collapsible sections; every slider has a box for typing the exact value (Enter applies
+  it). The filter box above the asset list narrows it by name or folder.
 - *Edit Asset* mode: draw any number of collision and shadow polygons ("New shape"), remove the green-screen
   background, halve the resolution. Saving writes the processed image to `assets/processed/` (the original is never
   changed) and the settings to `assets/data/asset_meta.json`. Commit both so the game uses them.

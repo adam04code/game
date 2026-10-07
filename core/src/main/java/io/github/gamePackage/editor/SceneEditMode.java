@@ -9,7 +9,6 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
-import com.badlogic.gdx.scenes.scene2d.ui.Slider;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.utils.Array;
@@ -19,6 +18,8 @@ import io.github.gamePackage.assets.AssetMeta;
 import io.github.gamePackage.assets.GameFiles;
 import io.github.gamePackage.assets.SpriteAsset;
 import io.github.gamePackage.render.Polygons;
+import io.github.gamePackage.ui.NumberSetting;
+import io.github.gamePackage.ui.Section;
 import io.github.gamePackage.render.ShadowMask;
 
 import java.util.Comparator;
@@ -70,10 +71,12 @@ class SceneEditMode extends EditorMode {
 
     private final Table panel = new Table();
     private Label selectedLabel;
-    private Label sizeLabel;
-    private Slider sizeSlider;
+    private Label placeLabel;
+    private NumberSetting sizeSetting;
+    private TextButton stopButton;
+    private TextButton saveButton;
+    private final Table footer = new Table();
     private final Array<TextButton> selectionButtons = new Array<>();
-    private boolean syncingUi;
 
     SceneEditMode(EditorContext ctx) {
         super(ctx);
@@ -87,54 +90,76 @@ class SceneEditMode extends EditorMode {
     // ---------------------------------------------------------------- panel
 
     private void buildPanel() {
-        panel.top().padRight(10);
-        panel.defaults().growX().padBottom(5);
+        panel.top().padRight(8);
+        panel.defaults().growX().padBottom(6);
 
-        ctx.section(panel, "Place");
-        panel.add(ctx.button("Stop placing (Esc)", this::stopPlacing)).row();
-        panel.add(ctx.button("Clear scene", () -> {
-            objects.clear();
-            select(null);
-            dirty = true;
-        })).row();
+        Section place = new Section(ctx.skin, "Place", true);
+        placeLabel = new Label("", ctx.skin, "dim");
+        placeLabel.setWrap(true);
+        place.body.add(placeLabel).row();
+        stopButton = ctx.button("Stop placing (Esc)", this::stopPlacing);
+        place.body.add(stopButton).row();
+        panel.add(place).row();
 
-        ctx.section(panel, "Selected object");
+        Section object = new Section(ctx.skin, "Selected object", true);
         selectedLabel = ctx.wrapped("");
-        panel.add(selectedLabel).row();
-        TextButton rotate = selectionButton("Rotate (R)", this::rotate);
-        TextButton delete = selectionButton("Delete (Del)", this::deleteSelected);
-        panel.add(ctx.row(rotate, delete)).row();
-        sizeLabel = new Label("", ctx.skin, "dim");
-        panel.add(sizeLabel).row();
-        sizeSlider = new Slider(MIN_SCALE, MAX_SCALE, 0.01f, false, ctx.skin);
-        EditorContext.onChange(sizeSlider, () -> {
-            if (!syncingUi) setScale(sizeSlider.getValue());
-        });
-        panel.add(sizeSlider).row();
-        TextButton smaller = selectionButton("Smaller (-)", () -> stepScale(1f / SCALE_STEP));
-        TextButton bigger = selectionButton("Bigger (+)", () -> stepScale(SCALE_STEP));
-        panel.add(ctx.row(smaller, bigger)).row();
-        panel.add(selectionButton("Reset to default size", this::resetToDefaultScale)).row();
+        object.body.add(selectedLabel).row();
+        sizeSetting = new NumberSetting(ctx.skin, "Size", MIN_SCALE, MAX_SCALE, 0.01f, "%.2f", this::setScale);
+        sizeSetting.setValue(1f);
+        object.body.add(sizeSetting).row();
+        object.body.add(ctx.row(
+            selectionButton("-10%", () -> stepScale(1f / SCALE_STEP)),
+            selectionButton("+10%", () -> stepScale(SCALE_STEP)),
+            selectionButton("Default", this::resetToDefaultScale))).row();
+        object.body.add(ctx.row(selectionButton("Rotate (R)", this::rotate),
+            selectionButton("Delete (Del)", this::deleteSelected))).row();
+        panel.add(object).row();
 
-        ctx.section(panel, "View");
+        Section scene = new Section(ctx.skin, "Scene", true);
         TextButton shadowsButton = ctx.toggle("Shadows");
         shadowsButton.setChecked(true);
         EditorContext.onChange(shadowsButton, () -> showShadows = shadowsButton.isChecked());
         TextButton collisionButton = ctx.toggle("Collision");
         collisionButton.setChecked(true);
         EditorContext.onChange(collisionButton, () -> showCollision = collisionButton.isChecked());
-        panel.add(ctx.row(shadowsButton, collisionButton)).row();
-        panel.add(ctx.button("Next terrain", () -> {
-            if (ctx.assets.catalog.terrains().isEmpty()) return;
-            terrainIndex = (terrainIndex + 1) % ctx.assets.catalog.terrains().size;
-            dirty = true;
-        })).row();
+        scene.body.add(ctx.row(shadowsButton, collisionButton)).row();
+        scene.body.add(ctx.row(
+            ctx.button("Next terrain", () -> {
+                if (ctx.assets.catalog.terrains().isEmpty()) return;
+                terrainIndex = (terrainIndex + 1) % ctx.assets.catalog.terrains().size;
+                dirty = true;
+            }),
+            ctx.button("Clear scene", () -> {
+                objects.clear();
+                select(null);
+                dirty = true;
+            }))).row();
+        panel.add(scene).row();
 
-        panel.add(ctx.button("Save scene (Ctrl+S)", this::save)).padTop(14).row();
-        panel.add(ctx.help("Click an asset in the list, then click the map to spawn it; right-click or Esc stops. "
-            + "Clicking a terrain in the list switches to it. New copies spawn at the asset's default size "
-            + "(set in Edit Asset). "
-            + "Drag objects to move them, drag empty ground to pan, wheel to zoom.")).padTop(6).row();
+        Section help = new Section(ctx.skin, "Help", false);
+        help.body.add(ctx.help("Click an asset in the list, then click the map to spawn it; right-click or Esc "
+            + "stops. Clicking a terrain in the list switches to it.\n"
+            + "Drag objects to move them, drag empty ground to pan, wheel to zoom.\n"
+            + "R: rotate, Del: delete, -/+: resize. New copies spawn at the asset's scene size "
+            + "(set in Edit Asset).")).row();
+        panel.add(help).row();
+
+        saveButton = ctx.button("Save scene", this::save);
+        footer.add(saveButton).growX();
+    }
+
+    @Override
+    Table footer() {
+        return footer;
+    }
+
+    @Override
+    void update(float delta) {
+        saveButton.setText(dirty ? "Save scene *  (Ctrl+S)" : "Save scene  (Ctrl+S)");
+        boolean isPlacing = placing != null;
+        stopButton.setDisabled(!isPlacing);
+        placeLabel.setText(isPlacing ? "Placing " + placing.name.replace('_', ' ')
+            + ". Click the map to spawn copies." : "Click an asset in the list to place it.");
     }
 
     private TextButton selectionButton(String text, Runnable action) {
@@ -151,18 +176,14 @@ class SceneEditMode extends EditorMode {
     private void syncSelection() {
         boolean has = selected != null;
         for (TextButton button : selectionButtons) button.setDisabled(!has);
-        sizeSlider.setDisabled(!has);
-        syncingUi = true;
+        sizeSetting.setDisabled(!has);
         if (has) {
-            selectedLabel.setText(selected.asset.name.replace('_', ' '));
-            sizeSlider.setValue(selected.scale);
-            sizeLabel.setText(String.format("Size: %.2fx   (default %.2fx)", selected.scale,
+            selectedLabel.setText(String.format("%s  (default size %.2f)", selected.asset.name.replace('_', ' '),
                 defaultScale(selected.asset)));
+            sizeSetting.setValue(selected.scale);
         } else {
             selectedLabel.setText("Nothing selected. Click an object.");
-            sizeLabel.setText("Size: -");
         }
-        syncingUi = false;
     }
 
     @Override

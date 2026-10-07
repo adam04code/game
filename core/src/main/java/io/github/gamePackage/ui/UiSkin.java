@@ -10,6 +10,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Slider;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.utils.BaseDrawable;
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 
@@ -54,6 +55,28 @@ public final class UiSkin {
         menuButton.over = drawable(skin, 0.24f, 0.30f, 0.40f, 0.95f, 24, 12);
         menuButton.down = drawable(skin, 0.16f, 0.36f, 0.56f, 1f, 24, 12);
         skin.add("menu", menuButton);
+
+        // Collapsible section headers: a flat band with accent-coloured text.
+        TextButton.TextButtonStyle section = new TextButton.TextButtonStyle();
+        section.up = drawable(skin, 0.14f, 0.16f, 0.21f, 1f, 8, 5);
+        section.over = drawable(skin, 0.18f, 0.21f, 0.27f, 1f, 8, 5);
+        section.down = section.over;
+        section.font = font;
+        section.fontColor = new Color(0.55f, 0.75f, 1f, 1f);
+        skin.add("section", section);
+
+        TextField.TextFieldStyle field = new TextField.TextFieldStyle();
+        field.font = font;
+        field.fontColor = Color.WHITE;
+        field.disabledFontColor = Color.GRAY;
+        field.messageFont = font;
+        field.messageFontColor = new Color(0.5f, 0.52f, 0.58f, 1f);
+        field.background = drawable(skin, 0.06f, 0.07f, 0.09f, 1f, 6, 4);
+        field.focusedBackground = drawable(skin, 0.05f, 0.06f, 0.08f, 1f, 6, 4);
+        field.cursor = drawable(skin, 0.85f, 0.88f, 0.95f, 1f, 0, 0);
+        ((BaseDrawable) field.cursor).setMinWidth(1);
+        field.selection = drawable(skin, 0.20f, 0.45f, 0.70f, 1f, 0, 0);
+        skin.add("default", field);
 
         skin.add("default", new Label.LabelStyle(font, Color.WHITE));
         skin.add("dim", new Label.LabelStyle(font, new Color(0.7f, 0.72f, 0.78f, 1f)));

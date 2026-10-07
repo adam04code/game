@@ -17,6 +17,11 @@ abstract class EditorMode {
     /** The mode's settings panel, shown on the right. */
     abstract Table panel();
 
+    /** Pinned under the panel (e.g. the Save button), or null. */
+    Table footer() {
+        return null;
+    }
+
     /** Centres the camera on the mode's content. */
     abstract void fitCamera();
 

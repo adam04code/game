@@ -12,7 +12,6 @@ import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.ui.ButtonGroup;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
-import com.badlogic.gdx.scenes.scene2d.ui.Slider;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.utils.Align;
@@ -21,6 +20,8 @@ import io.github.gamePackage.assets.AssetMeta;
 import io.github.gamePackage.assets.GameFiles;
 import io.github.gamePackage.assets.ImageProcessor;
 import io.github.gamePackage.assets.SpriteAsset;
+import io.github.gamePackage.ui.NumberSetting;
+import io.github.gamePackage.ui.Section;
 
 import java.util.ArrayList;
 
@@ -62,141 +63,139 @@ class AssetEditMode extends EditorMode {
     private int dragVertex = -1;
 
     private final Table panel = new Table();
-    private final Table greenSection = new Table();
+    private final Section greenSection;
+    private final Table footer = new Table();
     private final Table greenSlot = new Table();
     private final Table flipSlot = new Table();
-    private Label assetInfo;
+    private Label titleLabel;
+    private Label infoLabel;
+    private Label resolutionLabel;
+    private Label sceneSizeLabel;
+    private TextButton saveButton;
     private Label checkInfo;
     private Label shapeLabel;
-    private Label thresholdLabel;
-    private Label softnessLabel;
     private TextButton viewFlippedButton;
     private TextButton noCollisionButton;
     private TextButton removeGreenButton;
     private final TextButton[] toolButtons = new TextButton[3];
-    private Slider thresholdSlider;
-    private Slider softnessSlider;
-    private Label defaultScaleLabel;
-    private Slider defaultScaleSlider;
+    private NumberSetting thresholdSetting;
+    private NumberSetting softnessSetting;
+    private NumberSetting scaleSetting;
     private boolean syncingUi;
 
     AssetEditMode(EditorContext ctx, Runnable onSaved) {
         super(ctx);
         this.onSaved = onSaved;
+        greenSection = new Section(ctx.skin, "Green screen", true);
         buildPanel();
     }
 
     // ---------------------------------------------------------------- panel
 
     private void buildPanel() {
-        panel.top().padRight(10);
-        panel.defaults().growX().padBottom(5);
+        panel.top().padRight(8);
+        panel.defaults().growX().padBottom(6);
         // Created first: checking a tool button (which ButtonGroup does on add) updates it.
         shapeLabel = new Label("", ctx.skin);
         shapeLabel.setAlignment(Align.center);
+        shapeLabel.setEllipsis(true);
 
-        ctx.section(panel, "Asset");
-        assetInfo = ctx.wrapped("");
-        panel.add(assetInfo).row();
+        // Summary of the selected asset.
+        titleLabel = ctx.wrapped("");
+        panel.add(titleLabel).padTop(2).row();
+        infoLabel = new Label("", ctx.skin, "dim");
+        infoLabel.setWrap(true);
+        panel.add(infoLabel).row();
         checkInfo = ctx.wrapped("");
         panel.add(checkInfo).row();
         viewFlippedButton = ctx.toggle("View flipped side (R)");
         EditorContext.onChange(viewFlippedButton, () -> {
             if (!syncingUi) setViewFlipped(viewFlippedButton.isChecked());
         });
-        flipSlot.add(viewFlippedButton).growX();
-        panel.add(flipSlot).row();
+        panel.add(flipSlot).padBottom(8).row();
 
-        ctx.section(panel, "Bounds");
-        String[] toolNames = {"View (1)", "Collision (2)", "Shadow (3)"};
+        Section bounds = new Section(ctx.skin, "Bounds", true);
+        String[] toolNames = {"View 1", "Collision 2", "Shadow 3"};
         ButtonGroup<TextButton> toolGroup = new ButtonGroup<>();
         for (int i = 0; i < toolButtons.length; i++) {
             final Tool buttonTool = Tool.values()[i];
             TextButton toolButton = ctx.toggle(toolNames[i]);
-            toolButton.getLabel().setFontScale(0.9f);
             EditorContext.onChange(toolButton, () -> {
                 if (toolButton.isChecked()) setTool(buttonTool);
             });
             toolGroup.add(toolButton);
             toolButtons[i] = toolButton;
         }
-        panel.add(ctx.row(toolButtons)).row();
-
+        bounds.body.add(ctx.row(toolButtons)).row();
         Table shapeRow = new Table();
-        shapeRow.add(ctx.button("<", () -> cycleShape(-1))).width(36);
-        shapeRow.add(shapeLabel).growX();
-        shapeRow.add(ctx.button(">", () -> cycleShape(1))).width(36);
-        panel.add(shapeRow).row();
-        panel.add(ctx.row(ctx.button("New shape (N)", this::newShape), ctx.button("Delete shape", this::deleteShape)))
-            .row();
+        shapeRow.add(ctx.button("<", () -> cycleShape(-1))).width(28);
+        shapeRow.add(shapeLabel).growX().minWidth(0).padLeft(4).padRight(4);
+        shapeRow.add(ctx.button(">", () -> cycleShape(1))).width(28).padRight(6);
+        shapeRow.add(ctx.button("New", this::newShape)).width(52).padRight(4);
+        shapeRow.add(ctx.button("Delete", this::deleteShape)).width(60);
+        bounds.body.add(shapeRow).row();
         noCollisionButton = ctx.toggle("No collision needed");
         EditorContext.onChange(noCollisionButton, () -> {
             if (syncingUi || meta == null) return;
             meta.noCollision = noCollisionButton.isChecked();
             markMetaDirty();
         });
-        panel.add(noCollisionButton).row();
-        panel.add(ctx.help("Click: add point.  Drag point: move.  Right-click point: delete.\n"
-            + "Click a point of another shape to select it.  Tab: next shape.")).row();
+        bounds.body.add(noCollisionButton).row();
+        panel.add(bounds).row();
 
         // Terrain maps have no green screen, so this section is only shown for objects.
-        greenSection.defaults().growX().padBottom(5);
-        ctx.section(greenSection, "Green screen");
         removeGreenButton = ctx.toggle("Remove green background");
         EditorContext.onChange(removeGreenButton, () -> {
             if (syncingUi || meta == null) return;
             meta.removeGreen = removeGreenButton.isChecked();
             processingChanged(0f);
         });
-        greenSection.add(removeGreenButton).row();
-        thresholdLabel = new Label("", ctx.skin, "dim");
-        greenSection.add(thresholdLabel).row();
-        thresholdSlider = new Slider(0.05f, 0.95f, 0.01f, false, ctx.skin);
-        EditorContext.onChange(thresholdSlider, () -> {
-            if (syncingUi || meta == null) return;
-            meta.keyThreshold = thresholdSlider.getValue();
-            updateSliderLabels();
+        greenSection.body.add(removeGreenButton).row();
+        thresholdSetting = new NumberSetting(ctx.skin, "Threshold", 0.05f, 0.95f, 0.01f, "%.2f", value -> {
+            if (meta == null) return;
+            meta.keyThreshold = value;
             if (meta.removeGreen) processingChanged(PREVIEW_DELAY);
         });
-        greenSection.add(thresholdSlider).row();
-        softnessLabel = new Label("", ctx.skin, "dim");
-        greenSection.add(softnessLabel).row();
-        softnessSlider = new Slider(0.02f, 0.8f, 0.01f, false, ctx.skin);
-        EditorContext.onChange(softnessSlider, () -> {
-            if (syncingUi || meta == null) return;
-            meta.keySoftness = softnessSlider.getValue();
-            updateSliderLabels();
+        greenSection.body.add(thresholdSetting).row();
+        softnessSetting = new NumberSetting(ctx.skin, "Softness", 0.02f, 0.8f, 0.01f, "%.2f", value -> {
+            if (meta == null) return;
+            meta.keySoftness = value;
             if (meta.removeGreen) processingChanged(PREVIEW_DELAY);
         });
-        greenSection.add(softnessSlider).row();
+        greenSection.body.add(softnessSetting).row();
+        greenSection.body.add(ctx.help("Lower threshold removes more green.")).row();
         panel.add(greenSlot).row();
 
-        ctx.section(panel, "Resolution");
-        panel.add(ctx.row(ctx.button("Halve", this::halveResolution), ctx.button("Original size", () -> {
+        Section size = new Section(ctx.skin, "Size", true);
+        resolutionLabel = new Label("", ctx.skin, "dim");
+        size.body.add(resolutionLabel).row();
+        size.body.add(ctx.row(ctx.button("Halve resolution", this::halveResolution), ctx.button("Full", () -> {
             if (meta == null || meta.halvings == 0) return;
             meta.halvings = 0;
             processingChanged(0f);
         }))).row();
+        scaleSetting = new NumberSetting(ctx.skin, "Scene size", MIN_SCALE, MAX_SCALE, 0.01f, "%.2f",
+            this::setDefaultScale);
+        size.body.add(scaleSetting).padTop(4).row();
+        sceneSizeLabel = new Label("", ctx.skin, "dim");
+        size.body.add(sceneSizeLabel).row();
+        panel.add(size).row();
 
-        ctx.section(panel, "Size in scene");
-        defaultScaleLabel = new Label("", ctx.skin, "dim");
-        panel.add(defaultScaleLabel).row();
-        defaultScaleSlider = new Slider(MIN_SCALE, MAX_SCALE, 0.01f, false, ctx.skin);
-        EditorContext.onChange(defaultScaleSlider, () -> {
-            if (!syncingUi) setDefaultScale(defaultScaleSlider.getValue());
-        });
-        panel.add(defaultScaleSlider).row();
-        panel.add(ctx.row(
-            ctx.button("Smaller", () -> {
-                if (meta != null) setDefaultScale(meta.defaultScale / SCALE_STEP);
-            }),
-            ctx.button("Bigger", () -> {
-                if (meta != null) setDefaultScale(meta.defaultScale * SCALE_STEP);
-            }),
-            ctx.button("1x", () -> setDefaultScale(1f)))).row();
+        Section help = new Section(ctx.skin, "Help", false);
+        help.body.add(ctx.help("1 / 2 / 3: view, collision, shadow tool.\n"
+            + "Click: add point to the selected shape. Drag a point: move it. Right-click a point: delete it. "
+            + "Click a point of another shape to select it. N: new shape, Tab: next shape.\n"
+            + "Wheel or -/+ buttons: zoom. F: fit. Drag empty space: pan. R: flipped side. Ctrl+S: save.")).row();
+        panel.add(help).row();
 
-        panel.add(ctx.button("Save asset (Ctrl+S)", this::save)).padTop(14).row();
+        saveButton = ctx.button("Save asset", this::save);
+        footer.add(saveButton).growX();
         toolButtons[0].setChecked(true);
+    }
+
+    @Override
+    Table footer() {
+        return footer;
     }
 
     @Override
@@ -228,12 +227,11 @@ class AssetEditMode extends EditorMode {
         noCollisionButton.setChecked(hasMeta && meta.noCollision);
         removeGreenButton.setChecked(hasMeta && meta.removeGreen);
         if (hasMeta) {
-            thresholdSlider.setValue(meta.keyThreshold);
-            softnessSlider.setValue(meta.keySoftness);
-            defaultScaleSlider.setValue(meta.defaultScale);
+            thresholdSetting.setValue(meta.keyThreshold);
+            softnessSetting.setValue(meta.keySoftness);
+            scaleSetting.setValue(meta.defaultScale);
         }
         syncingUi = false;
-        updateSliderLabels();
         updateInfo();
     }
 
@@ -241,63 +239,56 @@ class AssetEditMode extends EditorMode {
     private void setDefaultScale(float scale) {
         if (meta == null) return;
         meta.defaultScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
-        syncingUi = true;
-        defaultScaleSlider.setValue(meta.defaultScale);
-        syncingUi = false;
-        updateSliderLabels();
+        scaleSetting.setValue(meta.defaultScale);
         markMetaDirty();
-    }
-
-    private void updateSliderLabels() {
-        if (meta == null) return;
-        int sceneWidth = previewBase == null ? 0 : Math.round(previewBase.getWidth() * meta.defaultScale);
-        int sceneHeight = previewBase == null ? 0 : Math.round(previewBase.getHeight() * meta.defaultScale);
-        defaultScaleLabel.setText(String.format("Default: %.2fx  (%dx%d in the scene)", meta.defaultScale,
-            sceneWidth, sceneHeight));
-        thresholdLabel.setText(String.format("Threshold: %.2f  (lower removes more)", meta.keyThreshold));
-        softnessLabel.setText(String.format("Edge softness: %.2f", meta.keySoftness));
     }
 
     private void updateInfo() {
         updateShapeLabel();
-        updateSliderLabels();
-        if (current == null || previewBase == null) {
-            assetInfo.setText("No asset selected");
+        boolean ready = current != null && previewBase != null;
+        saveButton.setText(ready && metaDirty ? "Save asset *  (Ctrl+S)" : "Save asset  (Ctrl+S)");
+        if (!ready) {
+            titleLabel.setText("No asset selected");
+            infoLabel.setText("");
             checkInfo.setText("");
+            resolutionLabel.setText("");
+            sceneSizeLabel.setText("");
             return;
         }
-        StringBuilder text = new StringBuilder(current.name.replace('_', ' '));
-        text.append("\nFolder: ").append(current.category.isEmpty() ? "(assets root)" : current.category);
-        if (current.terrain) text.append("\nTerrain map");
-        else text.append(current.hasFlipped() ? "\nHas a flipped side" : "\nNo flipped file (mirrored in game)");
-        text.append("\nSize: ").append(originalBase.getWidth()).append("x").append(originalBase.getHeight());
-        if (meta.halvings > 0) {
-            text.append(" -> ").append(previewBase.getWidth()).append("x").append(previewBase.getHeight());
-            if (current.terrain) text.append("\n(scene still draws it at full size)");
-        }
+        titleLabel.setText(current.name.replace('_', ' '));
+        StringBuilder info = new StringBuilder(current.category.isEmpty() ? "(assets root)" : current.category);
+        if (current.terrain) info.append("  |  terrain map");
+        else info.append(current.hasFlipped() ? "  |  has flipped side" : "  |  mirrored when rotated");
         if (!current.terrain) {
-            text.append("\nGreen screen: ").append(meta.removeGreen ? "removed"
+            info.append("\nGreen screen: ").append(meta.removeGreen ? "removed"
                 : meta.noGreenBackground ? "none detected" : "not removed");
         }
-        text.append("\nShapes: ").append(meta.collisions.length).append(" collision, ")
+        info.append("\nShapes: ").append(meta.collisions.length).append(" collision, ")
             .append(meta.shadows.length).append(" shadow");
-        if (metaDirty) text.append("\n* unsaved changes");
-        assetInfo.setText(text);
+        infoLabel.setText(info);
 
         String issues = AssetCheck.issues(current, meta);
         checkInfo.setText(issues == null ? "Check: OK" : "Needs: " + issues);
         checkInfo.setColor(issues == null ? new Color(0.5f, 0.85f, 0.5f, 1f) : EditorContext.FLAG_COLOR);
-    }
 
+        String resolution = "Image " + originalBase.getWidth() + "x" + originalBase.getHeight();
+        if (meta.halvings > 0) resolution += "  ->  " + previewBase.getWidth() + "x" + previewBase.getHeight();
+        resolutionLabel.setText(resolution);
+        if (current.terrain) {
+            sceneSizeLabel.setText("Terrains are drawn at full size.");
+        } else {
+            sceneSizeLabel.setText("New copies spawn at " + Math.round(previewBase.getWidth() * meta.defaultScale)
+                + "x" + Math.round(previewBase.getHeight() * meta.defaultScale) + " px.");
+        }
+    }
     private void updateShapeLabel() {
         if (meta == null || tool == Tool.VIEW) {
-            shapeLabel.setText("Pick Collision or Shadow");
+            shapeLabel.setText("Pick a tool");
             return;
         }
         float[][] list = shapes(tool);
-        String kind = tool == Tool.COLLISION ? "Collision" : "Shadow";
-        if (list.length == 0) shapeLabel.setText(kind + ": no shapes");
-        else shapeLabel.setText(kind + " " + (active() + 1) + " of " + list.length);
+        if (list.length == 0) shapeLabel.setText("No shapes");
+        else shapeLabel.setText("Shape " + (active() + 1) + " / " + list.length);
     }
 
     // ---------------------------------------------------------------- asset loading and processing
