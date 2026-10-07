@@ -24,6 +24,9 @@ start-up (or with **Rescan assets folder** in the editor). No code changes or li
 - *Scene* mode: spawn assets on the terrain, drag them around, resize (-/+), rotate (R) and delete (Del).
   "Set as default" makes an object's size the size new copies of that asset spawn at; "Reset to default" goes back
   to it. Saved to `assets/data/editor_scene.json`.
+  An object whose collision bounds overlap another object's shadow is darkened where that shadow falls on it
+  (objects without collision use the point they stand on). This is worked out every frame, so it follows objects
+  as they move. It uses the stencil buffer, which the desktop launcher enables.
 
 ## Platforms
 

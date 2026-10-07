@@ -18,6 +18,8 @@ import com.badlogic.gdx.utils.JsonWriter;
 import io.github.gamePackage.assets.AssetMeta;
 import io.github.gamePackage.assets.GameFiles;
 import io.github.gamePackage.assets.SpriteAsset;
+import io.github.gamePackage.render.Polygons;
+import io.github.gamePackage.render.ShadowMask;
 
 import java.util.Comparator;
 
@@ -38,7 +40,12 @@ class SceneEditMode extends EditorMode {
 
     private final Json json = new Json(JsonWriter.OutputType.json);
     private final Vector2 cursor = new Vector2();
-    private final float[] worldPolygon = new float[256];
+    private static final float[][] NO_SHAPES = new float[0][];
+    private final Array<SceneObject> renderList = new Array<>();
+    /** Stand-in object for the placement preview, so it casts and receives shadows like the real thing. */
+    private final SceneObject ghost = new SceneObject();
+    private final Array<float[]> receivedShadows = new Array<>();
+    private final ShadowMask shadowMask = new ShadowMask();
     private final Array<SceneObject> objects = new Array<>();
     private final Array<SceneObject> drawOrder = new Array<>();
     private final Comparator<SceneObject> backToFront = new Comparator<SceneObject>() {
@@ -351,39 +358,65 @@ class SceneEditMode extends EditorMode {
             ctx.batch.draw(terrain, 0, 0);
             ctx.batch.end();
         }
-        sortDrawOrder();
+
+        // Everything drawn this frame, including the placement preview, back to front.
+        renderList.clear();
+        renderList.addAll(objects);
+        if (placing != null && ctx.inCanvas(Gdx.input.getX())) {
+            ctx.worldViewport.unproject(cursor.set(Gdx.input.getX(), Gdx.input.getY()));
+            ghost.asset = placing;
+            ghost.assetId = placing.id;
+            ghost.x = cursor.x;
+            ghost.y = cursor.y;
+            ghost.flipped = placingFlipped;
+            ghost.scale = defaultScale(placing);
+            renderList.add(ghost);
+        }
+        renderList.sort(backToFront);
+
+        // World-space bounds are rebuilt every frame, so moved objects cast and receive shadows where they are now.
+        int count = renderList.size;
+        float[][][] shadowShapes = new float[count][][];
+        float[][][] collisionShapes = new float[count][][];
+        for (int i = 0; i < count; i++) {
+            SceneObject object = renderList.get(i);
+            AssetMeta meta = ctx.assets.meta.find(object.assetId);
+            shadowShapes[i] = worldShapes(object, meta == null ? null : meta.shadows);
+            collisionShapes[i] = worldShapes(object, meta == null ? null : meta.collisions);
+        }
 
         if (showShadows) {
-            for (SceneObject object : drawOrder) {
-                AssetMeta meta = ctx.assets.meta.find(object.assetId);
-                if (meta == null) continue;
-                for (float[] shadow : meta.shadows) {
-                    int length = objectPolygon(object, shadow);
-                    ctx.fillPolygon(worldPolygon, length, EditorContext.SHADOW_FILL);
-                }
+            for (float[][] shapes : shadowShapes) {
+                for (float[] shadow : shapes) ctx.fillPolygon(shadow, shadow.length, EditorContext.SHADOW_FILL);
             }
         }
 
+        boolean receiveShadows = showShadows && ShadowMask.isSupported();
         ctx.batch.begin();
-        for (SceneObject object : drawOrder) {
+        for (int i = 0; i < count; i++) {
+            SceneObject object = renderList.get(i);
+            float alpha = object == ghost ? 0.6f : 1f;
+            ctx.batch.setColor(1f, 1f, 1f, alpha);
             drawObject(object.asset, object.x, object.y, object.flipped, object.scale);
+            if (!receiveShadows || !collectReceivedShadows(i, shadowShapes, collisionShapes)) continue;
+            // Draw the object again, darkened, only where the shadows fall on it.
+            ctx.batch.end();
+            shadowMask.begin(ctx.shapes, receivedShadows);
+            ctx.batch.begin();
+            ctx.batch.setColor(0f, 0f, 0f, EditorContext.SHADOW_FILL.a * alpha);
+            drawObject(object.asset, object.x, object.y, object.flipped, object.scale);
+            ctx.batch.end();
+            shadowMask.end();
+            ctx.batch.begin();
         }
-        if (placing != null && ctx.inCanvas(Gdx.input.getX())) {
-            ctx.worldViewport.unproject(cursor.set(Gdx.input.getX(), Gdx.input.getY()));
-            ctx.batch.setColor(1f, 1f, 1f, 0.6f);
-            drawObject(placing, cursor.x, cursor.y, placingFlipped, defaultScale(placing));
-            ctx.batch.setColor(Color.WHITE);
-        }
+        ctx.batch.setColor(Color.WHITE);
         ctx.batch.end();
 
         ctx.beginShapes(ShapeRenderer.ShapeType.Line);
         if (showCollision) {
-            for (SceneObject object : drawOrder) {
-                AssetMeta meta = ctx.assets.meta.find(object.assetId);
-                if (meta == null) continue;
-                for (float[] collision : meta.collisions) {
-                    int length = objectPolygon(object, collision);
-                    ctx.outline(worldPolygon, length, EditorContext.COLLISION_COLOR, 1f);
+            for (float[][] shapes : collisionShapes) {
+                for (float[] collision : shapes) {
+                    ctx.outline(collision, collision.length, EditorContext.COLLISION_COLOR, 1f);
                 }
             }
         }
@@ -398,6 +431,33 @@ class SceneEditMode extends EditorMode {
         ctx.shapes.end();
     }
 
+    /**
+     * Fills {@link #receivedShadows} with the shadows of other objects that fall on object {@code index}: those
+     * overlapping its collision bounds, or, if it has none, containing the point it stands on.
+     */
+    private boolean collectReceivedShadows(int index, float[][][] shadowShapes, float[][][] collisionShapes) {
+        receivedShadows.clear();
+        SceneObject object = renderList.get(index);
+        float[][] collisions = collisionShapes[index];
+        for (int other = 0; other < shadowShapes.length; other++) {
+            if (other == index) continue;
+            for (float[] shadow : shadowShapes[other]) {
+                if (receives(collisions, object, shadow)) receivedShadows.add(shadow);
+            }
+        }
+        return receivedShadows.notEmpty();
+    }
+
+    private static boolean receives(float[][] collisions, SceneObject object, float[] shadow) {
+        boolean hasCollision = false;
+        for (float[] collision : collisions) {
+            if (collision.length < 6) continue;
+            hasCollision = true;
+            if (Polygons.overlap(collision, shadow)) return true;
+        }
+        return !hasCollision && Polygons.contains(shadow, object.x, object.y);
+    }
+
     private void drawObject(SpriteAsset asset, float x, float y, boolean flipped, float scale) {
         Texture texture = ctx.assets.texture(asset, flipped);
         if (texture == null) return;
@@ -408,20 +468,25 @@ class SceneEditMode extends EditorMode {
             mirror, false);
     }
 
-    /** Fills {@link #worldPolygon} with one of an object's polygons in world space; returns the float count. */
-    private int objectPolygon(SceneObject object, float[] normalized) {
+    /** An object's polygons (normalised to its image) in world space, mirrored when it is flipped. */
+    private float[][] worldShapes(SceneObject object, float[][] normalized) {
         Texture texture = ctx.assets.texture(object.asset, object.flipped);
-        if (texture == null) return 0;
+        if (texture == null || normalized == null) return NO_SHAPES;
         float width = texture.getWidth() * object.scale;
         float height = texture.getHeight() * object.scale;
         float left = object.x - width / 2f;
-        int length = Math.min(normalized.length, worldPolygon.length);
-        for (int i = 0; i < length; i += 2) {
-            float x = object.flipped ? 1f - normalized[i] : normalized[i];
-            worldPolygon[i] = left + x * width;
-            worldPolygon[i + 1] = object.y + normalized[i + 1] * height;
+        float[][] world = new float[normalized.length][];
+        for (int s = 0; s < normalized.length; s++) {
+            float[] points = normalized[s];
+            float[] out = new float[points.length];
+            for (int i = 0; i + 1 < points.length; i += 2) {
+                float x = object.flipped ? 1f - points[i] : points[i];
+                out[i] = left + x * width;
+                out[i + 1] = object.y + points[i + 1] * height;
+            }
+            world[s] = out;
         }
-        return length;
+        return world;
     }
 
     // ---------------------------------------------------------------- saving
