@@ -67,7 +67,8 @@ class SceneEditMode extends EditorMode {
     private SpriteAsset placing;
     private boolean placingFlipped;
     private int terrainIndex;
-    private boolean showShadows = true;
+    /** Only shows or hides the shadow outlines; shadows themselves are always rendered. */
+    private boolean showShadowBounds = true;
     private boolean showCollision = true;
     private boolean dirty;
     private boolean moving;
@@ -121,10 +122,10 @@ class SceneEditMode extends EditorMode {
         panel.add(object).row();
 
         Section scene = new Section(ctx.skin, "Scene", true);
-        TextButton shadowsButton = ctx.toggle("Shadows");
+        TextButton shadowsButton = ctx.toggle("Shadow bounds");
         shadowsButton.setChecked(true);
-        EditorContext.onChange(shadowsButton, () -> showShadows = shadowsButton.isChecked());
-        TextButton collisionButton = ctx.toggle("Collision");
+        EditorContext.onChange(shadowsButton, () -> showShadowBounds = shadowsButton.isChecked());
+        TextButton collisionButton = ctx.toggle("Collision bounds");
         collisionButton.setChecked(true);
         EditorContext.onChange(collisionButton, () -> showCollision = collisionButton.isChecked());
         scene.body.add(ctx.row(shadowsButton, collisionButton)).row();
@@ -452,29 +453,27 @@ class SceneEditMode extends EditorMode {
                 darkness);
         }
 
-        if (showShadows) {
-            // The terrain's own shadows don't darken the terrain (only objects standing in them), so they
-            // aren't drawn on the ground; they are outlined further down.
-            if (soft) {
-                groundShadows.clear();
-                for (float[][] shapes : shadowShapes) groundShadows.addAll(shapes);
-                if (groundShadows.notEmpty()) {
-                    softShadows.buildMask(ctx.shapes, ctx.camera.combined, groundShadows, blurPixels,
-                        settings.blurPasses);
-                    float viewWidth = ctx.camera.viewportWidth * ctx.camera.zoom;
-                    float viewHeight = ctx.camera.viewportHeight * ctx.camera.zoom;
-                    softShadows.drawGroundShadow(ctx.batch, ctx.camera.position.x - viewWidth / 2f,
-                        ctx.camera.position.y - viewHeight / 2f, viewWidth, viewHeight);
-                }
-            } else {
-                hardShadow.set(0f, 0f, 0f, darkness);
-                for (float[][] shapes : shadowShapes) {
-                    for (float[] shadow : shapes) ctx.fillPolygon(shadow, shadow.length, hardShadow);
-                }
+        // The terrain's own shadows don't darken the terrain (only objects standing in them), so they
+        // aren't drawn on the ground.
+        if (soft) {
+            groundShadows.clear();
+            for (float[][] shapes : shadowShapes) groundShadows.addAll(shapes);
+            if (groundShadows.notEmpty()) {
+                softShadows.buildMask(ctx.shapes, ctx.camera.combined, groundShadows, blurPixels,
+                    settings.blurPasses);
+                float viewWidth = ctx.camera.viewportWidth * ctx.camera.zoom;
+                float viewHeight = ctx.camera.viewportHeight * ctx.camera.zoom;
+                softShadows.drawGroundShadow(ctx.batch, ctx.camera.position.x - viewWidth / 2f,
+                    ctx.camera.position.y - viewHeight / 2f, viewWidth, viewHeight);
+            }
+        } else {
+            hardShadow.set(0f, 0f, 0f, darkness);
+            for (float[][] shapes : shadowShapes) {
+                for (float[] shadow : shapes) ctx.fillPolygon(shadow, shadow.length, hardShadow);
             }
         }
 
-        boolean receiveShadows = showShadows && (soft || ShadowMask.isSupported());
+        boolean receiveShadows = soft || ShadowMask.isSupported();
         ctx.batch.begin();
         for (int i = 0; i < count; i++) {
             SceneObject object = renderList.get(i);
@@ -509,9 +508,12 @@ class SceneEditMode extends EditorMode {
         ctx.batch.end();
 
         ctx.beginShapes(ShapeRenderer.ShapeType.Line);
-        if (showShadows) {
+        if (showShadowBounds) {
             for (float[] shadow : terrainShadows) {
                 ctx.outline(shadow, shadow.length, EditorContext.SHADOW_COLOR, 0.8f);
+            }
+            for (float[][] shapes : shadowShapes) {
+                for (float[] shadow : shapes) ctx.outline(shadow, shadow.length, EditorContext.SHADOW_COLOR, 0.8f);
             }
         }
         if (showCollision) {
