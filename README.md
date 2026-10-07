@@ -4,6 +4,24 @@ A [libGDX](https://libgdx.com/) project generated with [gdx-liftoff](https://git
 
 This project was generated with a template including simple application launchers and an `ApplicationAdapter` extension that draws libGDX logo.
 
+## Assets
+
+Drop images (`.png`, `.jpg`, `.jpeg`, `.bmp`) into any sub-folder of `assets/`; they are found automatically at
+start-up (or with **Rescan assets folder** in the editor). No code changes or lists to update.
+
+- A folder whose name contains `terrain` holds terrain maps.
+- Everything else is a placeable asset; its folder is its category.
+- `name_flipped.jpg` next to `name.jpg` is the same asset seen from the other side; the game uses it to rotate the
+  asset. Assets without one are mirrored instead.
+
+**Edit Assets** (title screen) opens the editor:
+
+- *Edit Asset* mode: draw collision and shadow polygons, remove the green-screen background, halve the resolution.
+  Saving writes the processed image to `assets/processed/` (the original is never changed) and the settings to
+  `assets/data/asset_meta.json`. Commit both so the game uses them.
+- *Scene* mode: spawn assets on the terrain, drag them around, rotate (R) and delete (Del). Saved to
+  `assets/data/editor_scene.json`.
+
 ## Platforms
 
 - `core`: Main module with the application logic shared by all platforms.
