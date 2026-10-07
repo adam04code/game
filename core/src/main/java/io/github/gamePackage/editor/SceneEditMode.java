@@ -14,6 +14,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonWriter;
+import io.github.gamePackage.GameSettings;
 import io.github.gamePackage.assets.AssetMeta;
 import io.github.gamePackage.assets.GameFiles;
 import io.github.gamePackage.assets.SpriteAsset;
@@ -21,6 +22,7 @@ import io.github.gamePackage.render.Polygons;
 import io.github.gamePackage.ui.NumberSetting;
 import io.github.gamePackage.ui.Section;
 import io.github.gamePackage.render.ShadowMask;
+import io.github.gamePackage.render.SoftShadows;
 
 import java.util.Comparator;
 
@@ -49,6 +51,9 @@ class SceneEditMode extends EditorMode {
     /** The terrain's shadow polygons in world space, for this frame. */
     private float[][] terrainShadows = NO_SHAPES;
     private final ShadowMask shadowMask = new ShadowMask();
+    private final SoftShadows softShadows = new SoftShadows();
+    private final Array<float[]> groundShadows = new Array<>();
+    private final Color hardShadow = new Color();
     private final Array<SceneObject> objects = new Array<>();
     private final Array<SceneObject> drawOrder = new Array<>();
     private final Comparator<SceneObject> backToFront = new Comparator<SceneObject>() {
@@ -436,27 +441,65 @@ class SceneEditMode extends EditorMode {
             collisionShapes[i] = worldShapes(object, meta == null ? null : meta.collisions);
         }
 
+        GameSettings settings = ctx.game.settings;
+        boolean soft = settings.softShadows;
+        float darkness = settings.shadowDarkness;
+        // Softness is set in world pixels, so the blur keeps its size on screen relative to the objects.
+        float blurPixels = settings.shadowSoftness / ctx.camera.zoom;
+        if (soft) {
+            softShadows.setViewport(ctx.worldViewport.getScreenX(), ctx.worldViewport.getScreenY(),
+                ctx.worldViewport.getScreenWidth(), ctx.worldViewport.getScreenHeight(), settings.shadowQuality,
+                darkness);
+        }
+
         if (showShadows) {
             // The terrain's own shadows don't darken the terrain (only objects standing in them), so they
-            // aren't filled; they are outlined further down.
-            for (float[][] shapes : shadowShapes) {
-                for (float[] shadow : shapes) ctx.fillPolygon(shadow, shadow.length, EditorContext.SHADOW_FILL);
+            // aren't drawn on the ground; they are outlined further down.
+            if (soft) {
+                groundShadows.clear();
+                for (float[][] shapes : shadowShapes) groundShadows.addAll(shapes);
+                if (groundShadows.notEmpty()) {
+                    softShadows.buildMask(ctx.shapes, ctx.camera.combined, groundShadows, blurPixels,
+                        settings.blurPasses);
+                    float viewWidth = ctx.camera.viewportWidth * ctx.camera.zoom;
+                    float viewHeight = ctx.camera.viewportHeight * ctx.camera.zoom;
+                    softShadows.drawGroundShadow(ctx.batch, ctx.camera.position.x - viewWidth / 2f,
+                        ctx.camera.position.y - viewHeight / 2f, viewWidth, viewHeight);
+                }
+            } else {
+                hardShadow.set(0f, 0f, 0f, darkness);
+                for (float[][] shapes : shadowShapes) {
+                    for (float[] shadow : shapes) ctx.fillPolygon(shadow, shadow.length, hardShadow);
+                }
             }
         }
 
-        boolean receiveShadows = showShadows && ShadowMask.isSupported();
+        boolean receiveShadows = showShadows && (soft || ShadowMask.isSupported());
         ctx.batch.begin();
         for (int i = 0; i < count; i++) {
             SceneObject object = renderList.get(i);
             float alpha = object == ghost ? 0.6f : 1f;
+            boolean shaded = receiveShadows && collectReceivedShadows(i, shadowShapes, collisionShapes);
+            if (shaded && soft) {
+                // One draw with a shader that darkens the sprite by the blurred shadows falling on it.
+                ctx.batch.end();
+                softShadows.buildMask(ctx.shapes, ctx.camera.combined, receivedShadows, blurPixels,
+                    settings.blurPasses);
+                softShadows.beginReceiver(ctx.batch);
+                ctx.batch.setColor(1f, 1f, 1f, alpha);
+                drawObject(object.asset, object.x, object.y, object.flipped, object.scale);
+                softShadows.endReceiver(ctx.batch);
+                ctx.batch.begin();
+                continue;
+            }
             ctx.batch.setColor(1f, 1f, 1f, alpha);
             drawObject(object.asset, object.x, object.y, object.flipped, object.scale);
-            if (!receiveShadows || !collectReceivedShadows(i, shadowShapes, collisionShapes)) continue;
-            // Draw the object again, darkened, only where the shadows fall on it.
+            if (!shaded) continue;
+            // Hard shadows: draw the object again, darkened, clipped to the shadows by the stencil buffer.
             ctx.batch.end();
             shadowMask.begin(ctx.shapes, receivedShadows);
             ctx.batch.begin();
-            ctx.batch.setColor(0f, 0f, 0f, EditorContext.SHADOW_FILL.a * alpha);
+            ctx.batch.setColor(0f, 0f, 0f, darkness * alpha);
             drawObject(object.asset, object.x, object.y, object.flipped, object.scale);
             ctx.batch.end();
             shadowMask.end();
@@ -612,5 +655,10 @@ class SceneEditMode extends EditorMode {
             if (object.asset == null) objects.removeIndex(i);
         }
         if (selected != null && selected.asset == null) select(null);
+    }
+
+    @Override
+    void dispose() {
+        softShadows.dispose();
     }
 }

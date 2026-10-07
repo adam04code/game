@@ -36,6 +36,13 @@ public class TitleScreen extends ScreenAdapter {
         TextButton newGame = new TextButton("New Game", skin, "menu");
         TextButton loadGame = new TextButton("Load Game", skin, "menu");
         TextButton editAssets = new TextButton("Edit Assets", skin, "menu");
+        TextButton settings = new TextButton("Settings", skin, "menu");
+        settings.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                Gdx.app.postRunnable(() -> game.setScreen(new SettingsScreen(game)));
+            }
+        });
         // New Game and Load Game do nothing yet.
         editAssets.addListener(new ChangeListener() {
             @Override
@@ -48,6 +55,7 @@ public class TitleScreen extends ScreenAdapter {
         root.add(newGame).row();
         root.add(loadGame).row();
         root.add(editAssets).row();
+        root.add(settings).row();
         stage.addActor(root);
     }
 
@@ -59,14 +67,14 @@ public class TitleScreen extends ScreenAdapter {
     @Override
     public void render(float delta) {
         ScreenUtils.clear(0.06f, 0.07f, 0.09f, 1f);
-        if (background != null) drawBackground();
+        if (background != null) drawDimmedBackground(batch, stage, background);
         stage.act(delta);
         stage.getViewport().apply();
         stage.draw();
     }
 
     /** Terrain map scaled to cover the screen, darkened so the menu stands out. */
-    private void drawBackground() {
+    static void drawDimmedBackground(SpriteBatch batch, Stage stage, Texture background) {
         ScreenViewport viewport = (ScreenViewport) stage.getViewport();
         viewport.apply(true);
         float width = viewport.getWorldWidth();

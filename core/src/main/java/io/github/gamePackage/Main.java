@@ -10,9 +10,12 @@ import io.github.gamePackage.ui.UiSkin;
 public class Main extends Game {
     public GameAssets assets;
     public Skin skin;
+    public final GameSettings settings = new GameSettings();
 
     @Override
     public void create() {
+        settings.load();
+        settings.applyDisplayMode();
         assets = new GameAssets();
         skin = UiSkin.create();
         setScreen(new LoadingScreen(this));

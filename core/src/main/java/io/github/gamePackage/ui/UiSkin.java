@@ -11,6 +11,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Slider;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.ui.TextField;
+import com.badlogic.gdx.scenes.scene2d.ui.Window;
 import com.badlogic.gdx.scenes.scene2d.utils.BaseDrawable;
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 
@@ -77,6 +78,14 @@ public final class UiSkin {
         ((BaseDrawable) field.cursor).setMinWidth(1);
         field.selection = drawable(skin, 0.20f, 0.45f, 0.70f, 1f, 0, 0);
         skin.add("default", field);
+
+        Window.WindowStyle window = new Window.WindowStyle();
+        window.titleFont = font;
+        window.titleFontColor = new Color(0.55f, 0.75f, 1f, 1f);
+        window.background = drawable(skin, 0.10f, 0.11f, 0.15f, 0.98f, 14, 14);
+        ((BaseDrawable) window.background).setTopHeight(34);
+        window.stageBackground = skin.newDrawable("white", new Color(0f, 0f, 0f, 0.55f));
+        skin.add("default", window);
 
         skin.add("default", new Label.LabelStyle(font, Color.WHITE));
         skin.add("dim", new Label.LabelStyle(font, new Color(0.7f, 0.72f, 0.78f, 1f)));

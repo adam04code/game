@@ -34,6 +34,15 @@ check, so new images are ready straight away.
   (objects without collision use the point they stand on). This is worked out every frame, so it follows objects
   as they move. It uses the stencil buffer, which the desktop launcher enables.
 
+## Settings
+
+**Settings** on the title screen has a Graphics tab: windowed or fullscreen, and soft shadows on or off.
+"Adjust..." opens the soft shadow settings (darkness, softness, blur passes, quality). Defaults: windowed,
+soft shadows on, darkness 0.40, softness 24, 2 passes, half quality. Settings are saved with libGDX preferences.
+
+With soft shadows on, shadows are blurred on the ground, and an object standing in another object's (or the
+terrain's) shadow is shaded with the same soft shadow. With them off, shadows have hard edges.
+
 ## Platforms
 
 - `core`: Main module with the application logic shared by all platforms.
