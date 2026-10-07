@@ -15,6 +15,8 @@ public class AssetMeta {
     public int halvings;
     /** The asset intentionally has no collision (grass, decals...), so the asset check doesn't flag it. */
     public boolean noCollision;
+    /** The image has no green screen (checked automatically), so it needs no green removal. */
+    public boolean noGreenBackground;
     /** Size multiplier newly spawned instances get. */
     public float defaultScale = 1f;
     public float[][] collisions = new float[0][];
@@ -48,7 +50,8 @@ public class AssetMeta {
     /** True when nothing differs from a freshly created entry, so it needn't be saved. */
     public boolean isDefault() {
         AssetMeta fresh = new AssetMeta();
-        return !removeGreen && halvings == 0 && !noCollision && collisions.length == 0 && shadows.length == 0
+        return !removeGreen && halvings == 0 && !noCollision && !noGreenBackground
+            && collisions.length == 0 && shadows.length == 0
             && keyThreshold == fresh.keyThreshold && keySoftness == fresh.keySoftness
             && defaultScale == fresh.defaultScale;
     }

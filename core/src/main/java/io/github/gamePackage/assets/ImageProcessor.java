@@ -89,6 +89,14 @@ public final class ImageProcessor {
         }
     }
 
+    /** Whether the image's border is a green screen (strongly green compared to red and blue). */
+    public static boolean hasGreenScreen(Pixmap image) {
+        Pixmap rgba = toRgba(image);
+        float[] border = sampleBorder(rgba.getPixels(), rgba.getWidth(), rgba.getHeight());
+        rgba.dispose();
+        return border[1] - Math.max(border[0], border[2]) > 0.2f;
+    }
+
     /** Median colour of the image border, which on these assets is the green screen. */
     private static float[] sampleBorder(ByteBuffer pixels, int width, int height) {
         int count = 2 * width + 2 * height;

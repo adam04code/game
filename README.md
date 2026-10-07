@@ -9,12 +9,15 @@ This project was generated with a template including simple application launcher
 Drop images (`.png`, `.jpg`, `.jpeg`, `.bmp`) into any sub-folder of `assets/`; they are found automatically at
 start-up (or with **Rescan assets folder** in the editor). No code changes or lists to update.
 
-- A folder whose name contains `terrain` holds terrain maps.
+- A folder whose name contains `terrain` holds terrain maps. They appear at the top of the editor's list and can
+  have collision and shadow shapes like any other asset (no green-screen tools; they have no green screen).
 - Everything else is a placeable asset; its folder is its category.
 - `name_flipped.jpg` next to `name.jpg` is the same asset seen from the other side; the game uses it to rotate the
   asset. Assets without one are mirrored instead.
 
-**Edit Assets** (title screen) opens the editor:
+**Edit Assets** (title screen) opens the editor. On opening it rescans the assets folder, removes the green
+background from every object that still has one (writing its processed image), scans again and runs the asset
+check, so new images are ready straight away.
 
 - *Edit Asset* mode: draw any number of collision and shadow polygons ("New shape"), remove the green-screen
   background, halve the resolution. Saving writes the processed image to `assets/processed/` (the original is never

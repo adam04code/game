@@ -15,7 +15,8 @@ import java.util.regex.Pattern;
 /**
  * Discovers every image in the assets folder, so new files are picked up just by dropping them in.
  * <ul>
- *   <li>Images in a folder whose name contains "terrain" are terrain maps.</li>
+ *   <li>Images in a folder whose name contains "terrain" are terrain maps. They are assets too (they can have
+ *   bounds), flagged {@link SpriteAsset#terrain}, and listed separately in {@link #terrains()}.</li>
  *   <li>Every other image is a sprite asset. "name_flipped.jpg" is paired with "name.jpg" as its flipped side.</li>
  *   <li>The editor's own output folders ({@code processed/}, {@code data/}) are skipped.</li>
  * </ul>
@@ -27,7 +28,7 @@ public class AssetCatalog {
     private static final String[] IGNORED_FILES = {"libgdx.png"};
 
     private final Array<SpriteAsset> sprites = new Array<>();
-    private final Array<String> terrains = new Array<>();
+    private final Array<SpriteAsset> terrains = new Array<>();
     private final ObjectMap<String, SpriteAsset> byId = new ObjectMap<>();
 
     /** Rebuilds the catalog from what is currently in the assets folder. */
@@ -49,7 +50,11 @@ public class AssetCatalog {
         byId.clear();
         for (String path : paths) {
             if (isTerrain(path)) {
-                terrains.add(path);
+                SpriteAsset terrain = new SpriteAsset(GameFiles.stripExtension(path), true);
+                if (byId.containsKey(terrain.id)) continue;
+                terrain.basePath = path;
+                byId.put(terrain.id, terrain);
+                terrains.add(terrain);
                 continue;
             }
             String stem = GameFiles.stripExtension(path);
@@ -58,7 +63,7 @@ public class AssetCatalog {
             String id = isFlipped ? stem.substring(0, flipped.start()) : stem;
             SpriteAsset asset = byId.get(id);
             if (asset == null) {
-                asset = new SpriteAsset(id);
+                asset = new SpriteAsset(id, false);
                 byId.put(id, asset);
                 sprites.add(asset);
             }
@@ -88,10 +93,11 @@ public class AssetCatalog {
         return sprites;
     }
 
-    public Array<String> terrains() {
+    public Array<SpriteAsset> terrains() {
         return terrains;
     }
 
+    /** A sprite or terrain by id. */
     public SpriteAsset find(String id) {
         return byId.get(id);
     }

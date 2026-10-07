@@ -45,6 +45,8 @@ class SceneEditMode extends EditorMode {
     /** Stand-in object for the placement preview, so it casts and receives shadows like the real thing. */
     private final SceneObject ghost = new SceneObject();
     private final Array<float[]> receivedShadows = new Array<>();
+    /** The terrain's shadow polygons in world space, for this frame. */
+    private float[][] terrainShadows = NO_SHAPES;
     private final ShadowMask shadowMask = new ShadowMask();
     private final Array<SceneObject> objects = new Array<>();
     private final Array<SceneObject> drawOrder = new Array<>();
@@ -132,6 +134,7 @@ class SceneEditMode extends EditorMode {
 
         panel.add(ctx.button("Save scene (Ctrl+S)", this::save)).padTop(14).row();
         panel.add(ctx.help("Click an asset in the list, then click the map to spawn it; right-click or Esc stops. "
+            + "Clicking a terrain in the list switches to it. "
             + "Drag objects to move them, drag empty ground to pan, wheel to zoom.")).padTop(6).row();
     }
 
@@ -236,7 +239,13 @@ class SceneEditMode extends EditorMode {
 
     @Override
     void assetSelected(SpriteAsset asset) {
-        startPlacing(asset);
+        if (asset.terrain) {
+            terrainIndex = Math.max(0, ctx.assets.catalog.terrains().indexOf(asset, true));
+            dirty = true;
+            ctx.setStatus("Terrain: " + asset.name);
+        } else {
+            startPlacing(asset);
+        }
     }
 
     @Override
@@ -313,15 +322,48 @@ class SceneEditMode extends EditorMode {
 
     @Override
     void fitCamera() {
-        Texture terrain = currentTerrain();
-        if (terrain != null) ctx.cameraControl.fit(0f, 0f, terrain.getWidth(), terrain.getHeight());
-        else ctx.cameraControl.fit(-512f, -512f, 1024f, 1024f);
+        Texture terrain = currentTerrainTexture();
+        if (terrain != null) {
+            float[] size = terrainSize(terrain);
+            ctx.cameraControl.fit(0f, 0f, size[0], size[1]);
+        } else {
+            ctx.cameraControl.fit(-512f, -512f, 1024f, 1024f);
+        }
     }
 
-    private Texture currentTerrain() {
-        Array<String> terrains = ctx.assets.catalog.terrains();
+    private SpriteAsset currentTerrain() {
+        Array<SpriteAsset> terrains = ctx.assets.catalog.terrains();
         if (terrains.isEmpty()) return null;
-        return ctx.assets.terrain(terrains.get(Math.min(terrainIndex, terrains.size - 1)));
+        return terrains.get(Math.min(terrainIndex, terrains.size - 1));
+    }
+
+    private Texture currentTerrainTexture() {
+        SpriteAsset terrain = currentTerrain();
+        return terrain == null ? null : ctx.assets.texture(terrain, false);
+    }
+
+    /** World size of the terrain: always its full-resolution size, so halving it doesn't move the world. */
+    private float[] terrainSize(Texture texture) {
+        AssetMeta meta = ctx.assets.meta.find(currentTerrain().id);
+        int factor = meta == null ? 1 : 1 << meta.halvings;
+        return new float[] {texture.getWidth() * factor, texture.getHeight() * factor};
+    }
+
+    /** The terrain's polygons (normalised to its image) in world space; the terrain sits at the origin. */
+    private float[][] terrainShapes(float[] size, boolean shadows) {
+        AssetMeta meta = ctx.assets.meta.find(currentTerrain().id);
+        if (meta == null) return NO_SHAPES;
+        float[][] normalized = shadows ? meta.shadows : meta.collisions;
+        float[][] world = new float[normalized.length][];
+        for (int s = 0; s < normalized.length; s++) {
+            float[] points = normalized[s];
+            world[s] = new float[points.length];
+            for (int i = 0; i + 1 < points.length; i += 2) {
+                world[s][i] = points[i] * size[0];
+                world[s][i + 1] = points[i + 1] * size[1];
+            }
+        }
+        return world;
     }
 
     /** Objects lower on the screen are in front, so draw from the top of the map down. */
@@ -352,11 +394,16 @@ class SceneEditMode extends EditorMode {
 
     @Override
     void render() {
-        Texture terrain = currentTerrain();
+        Texture terrain = currentTerrainTexture();
+        terrainShadows = NO_SHAPES;
+        float[][] terrainCollisions = NO_SHAPES;
         if (terrain != null) {
+            float[] size = terrainSize(terrain);
             ctx.batch.begin();
-            ctx.batch.draw(terrain, 0, 0);
+            ctx.batch.draw(terrain, 0, 0, size[0], size[1]);
             ctx.batch.end();
+            terrainShadows = terrainShapes(size, true);
+            terrainCollisions = terrainShapes(size, false);
         }
 
         // Everything drawn this frame, including the placement preview, back to front.
@@ -386,6 +433,7 @@ class SceneEditMode extends EditorMode {
         }
 
         if (showShadows) {
+            for (float[] shadow : terrainShadows) ctx.fillPolygon(shadow, shadow.length, EditorContext.SHADOW_FILL);
             for (float[][] shapes : shadowShapes) {
                 for (float[] shadow : shapes) ctx.fillPolygon(shadow, shadow.length, EditorContext.SHADOW_FILL);
             }
@@ -414,6 +462,9 @@ class SceneEditMode extends EditorMode {
 
         ctx.beginShapes(ShapeRenderer.ShapeType.Line);
         if (showCollision) {
+            for (float[] collision : terrainCollisions) {
+                ctx.outline(collision, collision.length, EditorContext.COLLISION_COLOR, 1f);
+            }
             for (float[][] shapes : collisionShapes) {
                 for (float[] collision : shapes) {
                     ctx.outline(collision, collision.length, EditorContext.COLLISION_COLOR, 1f);
@@ -432,13 +483,17 @@ class SceneEditMode extends EditorMode {
     }
 
     /**
-     * Fills {@link #receivedShadows} with the shadows of other objects that fall on object {@code index}: those
+     * Fills {@link #receivedShadows} with the shadows of the terrain and other objects that fall on object
+     * {@code index}: those
      * overlapping its collision bounds, or, if it has none, containing the point it stands on.
      */
     private boolean collectReceivedShadows(int index, float[][][] shadowShapes, float[][][] collisionShapes) {
         receivedShadows.clear();
         SceneObject object = renderList.get(index);
         float[][] collisions = collisionShapes[index];
+        for (float[] shadow : terrainShadows) {
+            if (receives(collisions, object, shadow)) receivedShadows.add(shadow);
+        }
         for (int other = 0; other < shadowShapes.length; other++) {
             if (other == index) continue;
             for (float[] shadow : shadowShapes[other]) {
@@ -501,8 +556,11 @@ class SceneEditMode extends EditorMode {
                 if (object.scale <= 0f) object.scale = 1f;
                 if (object.asset != null) objects.add(object);
             }
-            int index = ctx.assets.catalog.terrains().indexOf(scene.terrain, false);
-            if (index >= 0) terrainIndex = index;
+            Array<SpriteAsset> terrains = ctx.assets.catalog.terrains();
+            for (int i = 0; i < terrains.size; i++) {
+                SpriteAsset terrain = terrains.get(i);
+                if (terrain.basePath().equals(scene.terrain) || terrain.id.equals(scene.terrain)) terrainIndex = i;
+            }
         } catch (Exception e) {
             Gdx.app.error("AssetEditor", "Could not read " + SCENE_PATH, e);
         }
@@ -511,8 +569,8 @@ class SceneEditMode extends EditorMode {
     @Override
     void save() {
         SceneFile scene = new SceneFile();
-        Array<String> terrains = ctx.assets.catalog.terrains();
-        scene.terrain = terrains.isEmpty() ? null : terrains.get(Math.min(terrainIndex, terrains.size - 1));
+        SpriteAsset terrain = currentTerrain();
+        scene.terrain = terrain == null ? null : terrain.basePath();
         scene.objects.addAll(objects);
         try {
             GameFiles.writable(SCENE_PATH).writeString(json.prettyPrint(scene), false, "UTF-8");

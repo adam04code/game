@@ -26,7 +26,7 @@ public class TitleScreen extends ScreenAdapter {
     public TitleScreen(Main game) {
         this.game = game;
         background = game.assets.catalog.terrains().isEmpty()
-            ? null : game.assets.terrain(game.assets.catalog.terrains().first());
+            ? null : game.assets.texture(game.assets.catalog.terrains().first(), false);
 
         Skin skin = game.skin;
         Table root = new Table();

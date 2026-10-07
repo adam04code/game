@@ -41,7 +41,7 @@ public class GameAssets implements Disposable {
      */
     public void scanAndQueue() {
         catalog.scan();
-        for (String terrain : catalog.terrains()) queue(terrain, terrain);
+        for (SpriteAsset terrain : catalog.terrains()) queue(key(terrain.id, false), pathFor(terrain, false));
         for (SpriteAsset asset : catalog.sprites()) {
             queue(key(asset.id, false), pathFor(asset, false));
             if (asset.hasFlipped()) queue(key(asset.id, true), pathFor(asset, true));
@@ -67,10 +67,6 @@ public class GameAssets implements Disposable {
 
     public String loadedPath(SpriteAsset asset, boolean flipped) {
         return loadedPaths.get(key(asset.id, flipped && asset.hasFlipped()));
-    }
-
-    public Texture terrain(String path) {
-        return manager.isLoaded(path) ? manager.get(path, Texture.class) : null;
     }
 
     /** Reloads an asset after the editor changed its files. */

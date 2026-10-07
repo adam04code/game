@@ -5,12 +5,16 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.ScreenAdapter;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.Actor;
+import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.scenes.scene2d.InputListener;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.Touchable;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
 import com.badlogic.gdx.scenes.scene2d.ui.ButtonGroup;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
@@ -20,11 +24,14 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
+import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ObjectMap;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.gamePackage.Main;
+import io.github.gamePackage.assets.AssetBaker;
+import io.github.gamePackage.assets.GameFiles;
 import io.github.gamePackage.assets.SpriteAsset;
 import io.github.gamePackage.screens.TitleScreen;
 
@@ -57,6 +64,13 @@ public class AssetEditorScreen extends ScreenAdapter {
     private TextButton flaggedOnlyButton;
     private ScrollPane modePanelPane;
     private boolean syncingList;
+
+    /** Objects still waiting for automatic green removal while the editor opens. */
+    private final Array<SpriteAsset> pending = new Array<>();
+    private int pendingIndex;
+    private int greenRemoved;
+    private Table overlay;
+    private Label overlayLabel;
 
     private boolean modeDragging;
     private boolean panning;
@@ -104,13 +118,87 @@ public class AssetEditorScreen extends ScreenAdapter {
         mode = assetMode;
         buildUi();
         refreshList();
-        if (ctx.assets.catalog.sprites().notEmpty()) {
-            SpriteAsset first = ctx.assets.catalog.sprites().first();
+    }
+
+    // ---------------------------------------------------------------- opening: scan, remove green, check
+
+    /** Scans the assets folder and queues every object whose green background hasn't been removed yet. */
+    private void beginStartup() {
+        ctx.assets.scanAndQueue();
+        ctx.assets.manager.finishLoading();
+        refreshList();
+        pending.clear();
+        for (SpriteAsset asset : ctx.assets.catalog.sprites()) {
+            if (AssetBaker.needsAutoProcess(asset, ctx.assets.meta.find(asset.id))) pending.add(asset);
+        }
+        pendingIndex = 0;
+        greenRemoved = 0;
+        if (pending.notEmpty()) {
+            overlayLabel.setText("Preparing assets...");
+            stage.addActor(overlay);
+        } else {
+            finishStartup();
+        }
+    }
+
+    /** Processes one queued asset per frame so the progress shows. */
+    private void stepStartup() {
+        SpriteAsset asset = pending.get(pendingIndex++);
+        overlayLabel.setText("Removing green backgrounds\n" + pendingIndex + " / " + pending.size + "\n\n"
+            + asset.name.replace('_', ' '));
+        try {
+            if (AssetBaker.autoProcess(asset, ctx.assets.meta.getOrCreate(asset.id))) {
+                greenRemoved++;
+                for (int side = 0; side < 2; side++) {
+                    String source = asset.sourcePath(side == 1);
+                    ctx.hitMasks.invalidate(source);
+                    ctx.hitMasks.invalidate(GameFiles.processedPath(source));
+                }
+                ctx.assets.reload(asset);
+            }
+        } catch (Exception e) {
+            Gdx.app.error("AssetEditor", "Automatic green removal failed for " + asset.id, e);
+        }
+        if (pendingIndex < pending.size) return;
+        try {
+            ctx.assets.meta.save();
+        } catch (Exception e) {
+            Gdx.app.error("AssetEditor", "Saving asset settings failed", e);
+        }
+        overlay.remove();
+        finishStartup();
+    }
+
+    /** Scans again (so the processed images are picked up), runs the asset check and opens the first asset. */
+    private void finishStartup() {
+        pending.clear();
+        rescan();
+        runCheck();
+        Array<SpriteAsset> all = allAssets();
+        if (all.notEmpty()) {
+            SpriteAsset first = ctx.assets.catalog.sprites().notEmpty() ? ctx.assets.catalog.sprites().first()
+                : all.first();
             assetMode.assetSelected(first);
             selectInList(first);
-        } else {
-            ctx.setStatus("No assets found. Put images in sub-folders of assets/ and press Rescan.");
         }
+        if (all.isEmpty()) {
+            ctx.setStatus("No assets found. Put images in sub-folders of assets/ and press Rescan.");
+        } else {
+            String removed = greenRemoved > 0 ? "Removed green from " + greenRemoved + " assets. " : "";
+            ctx.setStatus(removed + (flags.size == 0 ? "All assets pass the check."
+                : flags.size + " assets need work (orange)."));
+        }
+    }
+
+    private boolean starting() {
+        return pending.notEmpty();
+    }
+
+    /** Terrains first, then objects. */
+    private Array<SpriteAsset> allAssets() {
+        Array<SpriteAsset> all = new Array<>(ctx.assets.catalog.terrains());
+        all.addAll(ctx.assets.catalog.sprites());
+        return all;
     }
 
     // ---------------------------------------------------------------- UI
@@ -186,6 +274,26 @@ public class AssetEditorScreen extends ScreenAdapter {
         root.add().grow();
         root.add(right).width(EditorContext.RIGHT_WIDTH).growY();
         showModeUi();
+
+        // Covers the editor and swallows input while assets are processed on opening.
+        overlay = new Table();
+        overlay.setFillParent(true);
+        overlay.setBackground(ctx.skin.newDrawable("white", new Color(0f, 0f, 0f, 0.75f)));
+        overlay.setTouchable(Touchable.enabled);
+        overlay.addListener(new InputListener() {
+            @Override
+            public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
+                return true;
+            }
+
+            @Override
+            public boolean scrolled(InputEvent event, float x, float y, float amountX, float amountY) {
+                return true;
+            }
+        });
+        overlayLabel = new Label("", ctx.skin);
+        overlayLabel.setAlignment(Align.center);
+        overlay.add(overlayLabel);
     }
 
     private void showModeUi() {
@@ -200,7 +308,7 @@ public class AssetEditorScreen extends ScreenAdapter {
     /** Rebuilds the list from the catalog, applying flags and the "flagged only" filter. */
     private void refreshList() {
         Array<AssetListItem> items = new Array<>();
-        for (SpriteAsset asset : ctx.assets.catalog.sprites()) {
+        for (SpriteAsset asset : allAssets()) {
             AssetListItem item = new AssetListItem(asset);
             item.issues = checkRun ? flags.get(asset.id) : null;
             if (!flaggedOnly || item.issues != null) items.add(item);
@@ -234,8 +342,8 @@ public class AssetEditorScreen extends ScreenAdapter {
 
     private void computeFlags() {
         flags.clear();
-        for (SpriteAsset asset : ctx.assets.catalog.sprites()) {
-            String issues = AssetCheck.issues(ctx.assets.meta.find(asset.id));
+        for (SpriteAsset asset : allAssets()) {
+            String issues = AssetCheck.issues(asset, ctx.assets.meta.find(asset.id));
             if (issues != null) flags.put(asset.id, issues);
         }
     }
@@ -246,7 +354,7 @@ public class AssetEditorScreen extends ScreenAdapter {
             checkSummary.setColor(0.7f, 0.72f, 0.78f, 1f);
             return;
         }
-        int total = ctx.assets.catalog.sprites().size;
+        int total = allAssets().size;
         if (flags.size == 0) {
             checkSummary.setText("All " + total + " assets pass.");
             checkSummary.setColor(0.5f, 0.85f, 0.5f, 1f);
@@ -298,14 +406,14 @@ public class AssetEditorScreen extends ScreenAdapter {
 
     private void rescan() {
         assetMode.saveIfDirty();
-        int before = ctx.assets.catalog.sprites().size;
+        int before = allAssets().size;
         ctx.assets.scanAndQueue();
         ctx.assets.manager.finishLoading();
         assetMode.afterRescan();
         sceneMode.afterRescan();
         if (checkRun) computeFlags();
         refreshList();
-        int found = ctx.assets.catalog.sprites().size;
+        int found = allAssets().size;
         ctx.setStatus("Found " + found + " assets (" + Math.max(0, found - before) + " new)");
     }
 
@@ -322,10 +430,12 @@ public class AssetEditorScreen extends ScreenAdapter {
     @Override
     public void show() {
         Gdx.input.setInputProcessor(new InputMultiplexer(stage, new CanvasInput()));
+        beginStartup();
     }
 
     @Override
     public void render(float delta) {
+        if (starting()) stepStartup();
         mode.update(delta);
         // Keep the highlight in step with the mode (e.g. cleared when placing stops) so the same asset can be
         // clicked again.
@@ -373,7 +483,7 @@ public class AssetEditorScreen extends ScreenAdapter {
 
         @Override
         public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-            if (!ctx.inCanvas(screenX)) return false;
+            if (starting() || !ctx.inCanvas(screenX)) return false;
             stage.setKeyboardFocus(null);
             stage.setScrollFocus(null);
             lastScreenX = screenX;
@@ -416,6 +526,7 @@ public class AssetEditorScreen extends ScreenAdapter {
 
         @Override
         public boolean keyDown(int keycode) {
+            if (starting()) return true;
             boolean ctrl = Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)
                 || Gdx.input.isKeyPressed(Input.Keys.CONTROL_RIGHT);
             if (ctrl && keycode == Input.Keys.S) {

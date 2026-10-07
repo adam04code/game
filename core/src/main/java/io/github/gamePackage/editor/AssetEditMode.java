@@ -59,6 +59,9 @@ class AssetEditMode extends EditorMode {
     private int dragVertex = -1;
 
     private final Table panel = new Table();
+    private final Table greenSection = new Table();
+    private final Table greenSlot = new Table();
+    private final Table flipSlot = new Table();
     private Label assetInfo;
     private Label checkInfo;
     private Label shapeLabel;
@@ -96,7 +99,8 @@ class AssetEditMode extends EditorMode {
         EditorContext.onChange(viewFlippedButton, () -> {
             if (!syncingUi) setViewFlipped(viewFlippedButton.isChecked());
         });
-        panel.add(viewFlippedButton).row();
+        flipSlot.add(viewFlippedButton).growX();
+        panel.add(flipSlot).row();
 
         ctx.section(panel, "Bounds");
         String[] toolNames = {"View (1)", "Collision (2)", "Shadow (3)"};
@@ -130,16 +134,18 @@ class AssetEditMode extends EditorMode {
         panel.add(ctx.help("Click: add point.  Drag point: move.  Right-click point: delete.\n"
             + "Click a point of another shape to select it.  Tab: next shape.")).row();
 
-        ctx.section(panel, "Green screen");
+        // Terrain maps have no green screen, so this section is only shown for objects.
+        greenSection.defaults().growX().padBottom(5);
+        ctx.section(greenSection, "Green screen");
         removeGreenButton = ctx.toggle("Remove green background");
         EditorContext.onChange(removeGreenButton, () -> {
             if (syncingUi || meta == null) return;
             meta.removeGreen = removeGreenButton.isChecked();
             processingChanged(0f);
         });
-        panel.add(removeGreenButton).row();
+        greenSection.add(removeGreenButton).row();
         thresholdLabel = new Label("", ctx.skin, "dim");
-        panel.add(thresholdLabel).row();
+        greenSection.add(thresholdLabel).row();
         thresholdSlider = new Slider(0.05f, 0.95f, 0.01f, false, ctx.skin);
         EditorContext.onChange(thresholdSlider, () -> {
             if (syncingUi || meta == null) return;
@@ -147,9 +153,9 @@ class AssetEditMode extends EditorMode {
             updateSliderLabels();
             if (meta.removeGreen) processingChanged(PREVIEW_DELAY);
         });
-        panel.add(thresholdSlider).row();
+        greenSection.add(thresholdSlider).row();
         softnessLabel = new Label("", ctx.skin, "dim");
-        panel.add(softnessLabel).row();
+        greenSection.add(softnessLabel).row();
         softnessSlider = new Slider(0.02f, 0.8f, 0.01f, false, ctx.skin);
         EditorContext.onChange(softnessSlider, () -> {
             if (syncingUi || meta == null) return;
@@ -157,7 +163,8 @@ class AssetEditMode extends EditorMode {
             updateSliderLabels();
             if (meta.removeGreen) processingChanged(PREVIEW_DELAY);
         });
-        panel.add(softnessSlider).row();
+        greenSection.add(softnessSlider).row();
+        panel.add(greenSlot).row();
 
         ctx.section(panel, "Resolution");
         panel.add(ctx.row(ctx.button("Halve", this::halveResolution), ctx.button("Original size", () -> {
@@ -188,6 +195,11 @@ class AssetEditMode extends EditorMode {
     }
 
     private void syncPanel() {
+        boolean object = current == null || !current.terrain;
+        greenSlot.clearChildren();
+        if (object) greenSlot.add(greenSection).growX();
+        flipSlot.clearChildren();
+        if (object) flipSlot.add(viewFlippedButton).growX();
         syncingUi = true;
         viewFlippedButton.setChecked(viewFlipped);
         boolean hasMeta = meta != null;
@@ -217,17 +229,23 @@ class AssetEditMode extends EditorMode {
         }
         StringBuilder text = new StringBuilder(current.name.replace('_', ' '));
         text.append("\nFolder: ").append(current.category.isEmpty() ? "(assets root)" : current.category);
-        text.append(current.hasFlipped() ? "\nHas a flipped side" : "\nNo flipped file (mirrored in game)");
+        if (current.terrain) text.append("\nTerrain map");
+        else text.append(current.hasFlipped() ? "\nHas a flipped side" : "\nNo flipped file (mirrored in game)");
         text.append("\nSize: ").append(originalBase.getWidth()).append("x").append(originalBase.getHeight());
         if (meta.halvings > 0) {
             text.append(" -> ").append(previewBase.getWidth()).append("x").append(previewBase.getHeight());
+            if (current.terrain) text.append("\n(scene still draws it at full size)");
+        }
+        if (!current.terrain) {
+            text.append("\nGreen screen: ").append(meta.removeGreen ? "removed"
+                : meta.noGreenBackground ? "none detected" : "not removed");
         }
         text.append("\nShapes: ").append(meta.collisions.length).append(" collision, ")
             .append(meta.shadows.length).append(" shadow");
         if (metaDirty) text.append("\n* unsaved changes");
         assetInfo.setText(text);
 
-        String issues = AssetCheck.issues(meta);
+        String issues = AssetCheck.issues(current, meta);
         checkInfo.setText(issues == null ? "Check: OK" : "Needs: " + issues);
         checkInfo.setColor(issues == null ? new Color(0.5f, 0.85f, 0.5f, 1f) : EditorContext.FLAG_COLOR);
     }
@@ -570,7 +588,7 @@ class AssetEditMode extends EditorMode {
     boolean keyDown(int keycode, boolean ctrl) {
         switch (keycode) {
             case Input.Keys.R:
-                setViewFlipped(!viewFlipped);
+                if (current != null && !current.terrain) setViewFlipped(!viewFlipped);
                 return true;
             case Input.Keys.NUM_1:
             case Input.Keys.NUM_2:

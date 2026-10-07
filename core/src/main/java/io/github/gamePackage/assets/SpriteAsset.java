@@ -11,11 +11,14 @@ public class SpriteAsset {
     public final String category;
     /** Short name for lists. */
     public final String name;
+    /** A terrain map (drawn under everything at the world origin) rather than a placeable object. */
+    public final boolean terrain;
     String basePath;
     String flippedPath;
 
-    SpriteAsset(String id) {
+    SpriteAsset(String id, boolean terrain) {
         this.id = id;
+        this.terrain = terrain;
         int slash = id.lastIndexOf('/');
         category = slash < 0 ? "" : id.substring(0, slash);
         String fileName = slash < 0 ? id : id.substring(slash + 1);
@@ -43,6 +46,7 @@ public class SpriteAsset {
     @Override
     public String toString() {
         String label = name.replace('_', ' ');
+        if (terrain) return "Terrain: " + label;
         if (hasFlipped()) label += " [+flipped]";
         return category.isEmpty() ? label : label + "  (" + category + ")";
     }
