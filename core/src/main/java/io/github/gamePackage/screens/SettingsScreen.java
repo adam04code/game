@@ -33,7 +33,8 @@ public class SettingsScreen extends ScreenAdapter {
     private final SpriteBatch batch = new SpriteBatch();
     private final Texture background;
     private Window shadowWindow;
-    private NumberSetting darkness;
+    private NumberSetting groundDarkness;
+    private NumberSetting objectDarkness;
     private NumberSetting softness;
     private NumberSetting passes;
     private TextButton[] qualityButtons;
@@ -101,10 +102,36 @@ public class SettingsScreen extends ScreenAdapter {
         panel.add(name("Soft shadows")).width(NAME_WIDTH);
         panel.add(shadowRow).growX().row();
 
-        Label note = new Label("Soft shadows blur the edges of shadows on the ground and on objects standing in "
-            + "another object's shadow.", skin, "dim");
+        groundDarkness = new NumberSetting(skin, "Ground", 0f, 1f, 0.01f, "%.2f", value -> {
+            settings.shadowDarkness = value;
+            settings.save();
+        });
+        objectDarkness = new NumberSetting(skin, "On objects", 0f, 1f, 0.01f, "%.2f", value -> {
+            settings.objectShadowDarkness = value;
+            settings.save();
+        });
+        groundDarkness.setValue(settings.shadowDarkness);
+        objectDarkness.setValue(settings.objectShadowDarkness);
+        Table darknessRows = new Table();
+        darknessRows.defaults().growX();
+        darknessRows.add(groundDarkness).padBottom(6).row();
+        darknessRows.add(objectDarkness).row();
+        panel.add(name("Shadow darkness")).width(NAME_WIDTH).top().padTop(2);
+        panel.add(darknessRows).growX().row();
+
+        Label note = new Label("Soft shadows blur shadow edges. \"On objects\" is how dark an object gets where "
+            + "another object's or the terrain's shadow falls on it.", skin, "dim");
         note.setWrap(true);
-        panel.add(note).colspan(2).growX().padBottom(0).row();
+        panel.add(note).colspan(2).growX().row();
+
+        TextButton resetDarkness = new TextButton("Default darkness", skin);
+        onChange(resetDarkness, () -> {
+            settings.resetShadowDarkness();
+            settings.save();
+            groundDarkness.setValue(settings.shadowDarkness);
+            objectDarkness.setValue(settings.objectShadowDarkness);
+        });
+        panel.add(resetDarkness).colspan(2).right().width(160).padBottom(0).row();
     }
 
     private Window buildShadowWindow() {
@@ -114,10 +141,6 @@ public class SettingsScreen extends ScreenAdapter {
         window.getTitleLabel().setFontScale(1f);
         window.defaults().growX().padBottom(8);
 
-        darkness = new NumberSetting(skin, "Darkness", 0f, 1f, 0.01f, "%.2f", value -> {
-            settings.shadowDarkness = value;
-            settings.save();
-        });
         softness = new NumberSetting(skin, "Softness", 0f, 96f, 1f, "%.0f", value -> {
             settings.shadowSoftness = value;
             settings.save();
@@ -126,7 +149,6 @@ public class SettingsScreen extends ScreenAdapter {
             settings.blurPasses = Math.round(value);
             settings.save();
         });
-        window.add(darkness).row();
         window.add(softness).row();
         window.add(passes).row();
 
@@ -150,16 +172,14 @@ public class SettingsScreen extends ScreenAdapter {
         }
         window.add(qualityRow).row();
 
-        Label note = new Label("Darkness also applies with soft shadows off. Higher quality and more passes look "
-            + "smoother but cost performance.", skin, "dim");
+        Label note = new Label("Higher quality and more passes look smoother but cost performance. Shadow "
+            + "darkness is set on the Graphics tab.", skin, "dim");
         note.setWrap(true);
         window.add(note).width(420).row();
 
         TextButton defaults = new TextButton("Defaults", skin);
         onChange(defaults, () -> {
-            boolean softOn = settings.softShadows;
-            settings.resetShadowDefaults();
-            settings.softShadows = softOn;
+            settings.resetSoftShadowDefaults();
             settings.save();
             syncShadowWindow();
         });
@@ -179,7 +199,6 @@ public class SettingsScreen extends ScreenAdapter {
     }
 
     private void syncShadowWindow() {
-        darkness.setValue(settings.shadowDarkness);
         softness.setValue(settings.shadowSoftness);
         passes.setValue(settings.blurPasses);
         int index = settings.shadowQuality >= 4 ? 2 : settings.shadowQuality >= 2 ? 1 : 0;

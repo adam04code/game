@@ -36,9 +36,10 @@ check, so new images are ready straight away.
 
 ## Settings
 
-**Settings** on the title screen has a Graphics tab: windowed or fullscreen, and soft shadows on or off.
-"Adjust..." opens the soft shadow settings (darkness, softness, blur passes, quality). Defaults: windowed,
-soft shadows on, darkness 0.40, softness 24, 2 passes, half quality. Settings are saved with libGDX preferences.
+**Settings** on the title screen has a Graphics tab: windowed or fullscreen, soft shadows on or off, and
+shadow darkness for the ground and for objects standing in another entity's shadow. "Adjust..." opens the soft
+shadow look (softness, blur passes, quality). Defaults: windowed, soft shadows on, ground darkness 0.40, object
+darkness 0.55, softness 24, 2 passes, half quality. Settings are saved with libGDX preferences.
 
 With soft shadows on, shadows are blurred on the ground, and an object standing in another object's (or the
 terrain's) shadow is shaded with the same soft shadow. With them off, shadows have hard edges.

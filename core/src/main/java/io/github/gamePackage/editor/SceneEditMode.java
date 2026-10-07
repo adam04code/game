@@ -485,7 +485,7 @@ class SceneEditMode extends EditorMode {
                 ctx.batch.end();
                 softShadows.buildMask(ctx.shapes, ctx.camera.combined, receivedShadows, blurPixels,
                     settings.blurPasses);
-                softShadows.beginReceiver(ctx.batch);
+                softShadows.beginReceiver(ctx.batch, settings.objectShadowDarkness);
                 ctx.batch.setColor(1f, 1f, 1f, alpha);
                 drawObject(object.asset, object.x, object.y, object.flipped, object.scale);
                 softShadows.endReceiver(ctx.batch);
@@ -499,7 +499,7 @@ class SceneEditMode extends EditorMode {
             ctx.batch.end();
             shadowMask.begin(ctx.shapes, receivedShadows);
             ctx.batch.begin();
-            ctx.batch.setColor(0f, 0f, 0f, darkness * alpha);
+            ctx.batch.setColor(0f, 0f, 0f, settings.objectShadowDarkness * alpha);
             drawObject(object.asset, object.x, object.y, object.flipped, object.scale);
             ctx.batch.end();
             shadowMask.end();

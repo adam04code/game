@@ -112,7 +112,7 @@ public class SoftShadows implements Disposable {
 
     /**
      * The on-screen area being rendered, in logical screen coordinates (as a Viewport's screen bounds), plus the
-     * mask resolution divisor (1, 2 or 4) and shadow darkness.
+     * mask resolution divisor (1, 2 or 4) and ground shadow darkness.
      */
     public void setViewport(int screenX, int screenY, int screenWidth, int screenHeight, int quality,
                             float darkness) {
@@ -175,19 +175,19 @@ public class SoftShadows implements Disposable {
         Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0);
         batch.setShader(groundShader);
         batch.begin();
-        setMaskUniforms(groundShader);
+        setMaskUniforms(groundShader, darkness);
         batch.draw(white, worldX, worldY, worldWidth, worldHeight);
         batch.end();
         batch.setShader(null);
     }
 
-    /** Sprites drawn with {@code batch} until {@link #endReceiver} are darkened by the mask. */
-    public void beginReceiver(SpriteBatch batch) {
+    /** Sprites drawn with {@code batch} until {@link #endReceiver} are darkened by the mask, up to the darkness. */
+    public void beginReceiver(SpriteBatch batch, float receiverDarkness) {
         mask.getColorBufferTexture().bind(1);
         Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0);
         batch.setShader(receiverShader);
         batch.begin();
-        setMaskUniforms(receiverShader);
+        setMaskUniforms(receiverShader, receiverDarkness);
         receiving = true;
     }
 
@@ -198,10 +198,10 @@ public class SoftShadows implements Disposable {
         receiving = false;
     }
 
-    private void setMaskUniforms(ShaderProgram shader) {
+    private void setMaskUniforms(ShaderProgram shader, float shadeDarkness) {
         shader.setUniformi("u_mask", 1);
         shader.setUniformf("u_viewport", viewX, viewY, viewWidth, viewHeight);
-        shader.setUniformf("u_darkness", darkness);
+        shader.setUniformf("u_darkness", shadeDarkness);
     }
 
     private void blurInto(FrameBuffer source, FrameBuffer target, float dirX, float dirY) {
