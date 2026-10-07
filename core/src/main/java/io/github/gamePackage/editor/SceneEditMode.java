@@ -416,7 +416,8 @@ class SceneEditMode extends EditorMode {
         }
 
         if (showShadows) {
-            for (float[] shadow : terrainShadows) ctx.fillPolygon(shadow, shadow.length, EditorContext.SHADOW_FILL);
+            // The terrain's own shadows don't darken the terrain (only objects standing in them), so they
+            // aren't filled; they are outlined further down.
             for (float[][] shapes : shadowShapes) {
                 for (float[] shadow : shapes) ctx.fillPolygon(shadow, shadow.length, EditorContext.SHADOW_FILL);
             }
@@ -444,6 +445,11 @@ class SceneEditMode extends EditorMode {
         ctx.batch.end();
 
         ctx.beginShapes(ShapeRenderer.ShapeType.Line);
+        if (showShadows) {
+            for (float[] shadow : terrainShadows) {
+                ctx.outline(shadow, shadow.length, EditorContext.SHADOW_COLOR, 0.8f);
+            }
+        }
         if (showCollision) {
             for (float[] collision : terrainCollisions) {
                 ctx.outline(collision, collision.length, EditorContext.COLLISION_COLOR, 1f);

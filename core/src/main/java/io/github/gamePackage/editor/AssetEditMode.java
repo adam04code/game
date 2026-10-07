@@ -684,13 +684,14 @@ class AssetEditMode extends EditorMode {
         }
         shapes.end();
 
-        ctx.batch.begin();
-        ctx.batch.draw(texture, 0, 0, width, height, 0, 0, width, height, mirror, false);
-        ctx.batch.end();
-
+        // Shadows fall on the ground behind the asset, never on the asset itself: fill them before drawing it.
         float[][] shadowShapes = canvasShapes(meta.shadows);
         float[][] collisionShapes = canvasShapes(meta.collisions);
         for (float[] shadow : shadowShapes) ctx.fillPolygon(shadow, shadow.length, EditorContext.SHADOW_FILL);
+
+        ctx.batch.begin();
+        ctx.batch.draw(texture, 0, 0, width, height, 0, 0, width, height, mirror, false);
+        ctx.batch.end();
 
         ctx.beginShapes(ShapeRenderer.ShapeType.Line);
         shapes.setColor(0.6f, 0.6f, 0.65f, 1f);
