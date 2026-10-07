@@ -9,16 +9,19 @@ public class SceneObject {
     public float y;
     /** Shows the flipped side, i.e. the object rotated. */
     public boolean flipped;
+    /** Size multiplier of this instance. */
+    public float scale = 1f;
     public transient SpriteAsset asset;
 
     public SceneObject() {
     }
 
-    public SceneObject(SpriteAsset asset, float x, float y, boolean flipped) {
+    public SceneObject(SpriteAsset asset, float x, float y, boolean flipped, float scale) {
         this.asset = asset;
         this.assetId = asset.id;
         this.x = x;
         this.y = y;
         this.flipped = flipped;
+        this.scale = scale;
     }
 }

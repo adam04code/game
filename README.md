@@ -16,11 +16,14 @@ start-up (or with **Rescan assets folder** in the editor). No code changes or li
 
 **Edit Assets** (title screen) opens the editor:
 
-- *Edit Asset* mode: draw collision and shadow polygons, remove the green-screen background, halve the resolution.
-  Saving writes the processed image to `assets/processed/` (the original is never changed) and the settings to
-  `assets/data/asset_meta.json`. Commit both so the game uses them.
-- *Scene* mode: spawn assets on the terrain, drag them around, rotate (R) and delete (Del). Saved to
-  `assets/data/editor_scene.json`.
+- *Edit Asset* mode: draw any number of collision and shadow polygons ("New shape"), remove the green-screen
+  background, halve the resolution. Saving writes the processed image to `assets/processed/` (the original is never
+  changed) and the settings to `assets/data/asset_meta.json`. Commit both so the game uses them.
+  **Check all assets** flags (in orange) every asset that still has its green background or has no collision;
+  mark an asset "No collision needed" to stop it being flagged for collision.
+- *Scene* mode: spawn assets on the terrain, drag them around, resize (-/+), rotate (R) and delete (Del).
+  "Set as default" makes an object's size the size new copies of that asset spawn at; "Reset to default" goes back
+  to it. Saved to `assets/data/editor_scene.json`.
 
 ## Platforms
 

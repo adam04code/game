@@ -26,7 +26,10 @@ public class AssetMetaStore {
         if (!file.exists()) return;
         try {
             MetaFile metaFile = json.fromJson(MetaFile.class, file);
-            for (AssetMeta meta : metaFile.assets) byId.put(meta.id, meta);
+            for (AssetMeta meta : metaFile.assets) {
+                meta.migrate();
+                byId.put(meta.id, meta);
+            }
         } catch (Exception e) {
             Gdx.app.error("AssetMetaStore", "Could not read " + PATH, e);
         }
@@ -34,7 +37,9 @@ public class AssetMetaStore {
 
     public void save() {
         MetaFile metaFile = new MetaFile();
-        for (AssetMeta meta : byId.values()) metaFile.assets.add(meta);
+        for (AssetMeta meta : byId.values()) {
+            if (!meta.isDefault()) metaFile.assets.add(meta);
+        }
         metaFile.assets.sort(new Comparator<AssetMeta>() {
             @Override
             public int compare(AssetMeta a, AssetMeta b) {
@@ -49,13 +54,22 @@ public class AssetMetaStore {
         return byId.get(id);
     }
 
-    public void put(AssetMeta meta) {
-        byId.put(meta.id, meta);
+    /** Settings for an asset, created (unsaved) if it was never edited. */
+    public AssetMeta getOrCreate(String id) {
+        AssetMeta meta = byId.get(id);
+        if (meta == null) {
+            meta = new AssetMeta(id);
+            byId.put(id, meta);
+        }
+        return meta;
     }
 
     private static Json createJson() {
         Json json = new Json(JsonWriter.OutputType.json);
         json.setUsePrototypes(false);
+        // Read the old single-polygon fields so they can be migrated, but never write them again.
+        json.setIgnoreDeprecated(true);
+        json.setReadDeprecated(true);
         json.setElementType(MetaFile.class, "assets", AssetMeta.class);
         return json;
     }
