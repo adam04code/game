@@ -31,6 +31,9 @@ import java.util.ArrayList;
  */
 class AssetEditMode extends EditorMode {
     private static final float PREVIEW_DELAY = 0.2f;
+    static final float MIN_SCALE = 0.1f;
+    static final float MAX_SCALE = 4f;
+    static final float SCALE_STEP = 1.1f;
 
     private enum Tool { VIEW, COLLISION, SHADOW }
 
@@ -73,6 +76,8 @@ class AssetEditMode extends EditorMode {
     private final TextButton[] toolButtons = new TextButton[3];
     private Slider thresholdSlider;
     private Slider softnessSlider;
+    private Label defaultScaleLabel;
+    private Slider defaultScaleSlider;
     private boolean syncingUi;
 
     AssetEditMode(EditorContext ctx, Runnable onSaved) {
@@ -84,7 +89,7 @@ class AssetEditMode extends EditorMode {
     // ---------------------------------------------------------------- panel
 
     private void buildPanel() {
-        panel.top();
+        panel.top().padRight(10);
         panel.defaults().growX().padBottom(5);
         // Created first: checking a tool button (which ButtonGroup does on add) updates it.
         shapeLabel = new Label("", ctx.skin);
@@ -173,6 +178,23 @@ class AssetEditMode extends EditorMode {
             processingChanged(0f);
         }))).row();
 
+        ctx.section(panel, "Size in scene");
+        defaultScaleLabel = new Label("", ctx.skin, "dim");
+        panel.add(defaultScaleLabel).row();
+        defaultScaleSlider = new Slider(MIN_SCALE, MAX_SCALE, 0.01f, false, ctx.skin);
+        EditorContext.onChange(defaultScaleSlider, () -> {
+            if (!syncingUi) setDefaultScale(defaultScaleSlider.getValue());
+        });
+        panel.add(defaultScaleSlider).row();
+        panel.add(ctx.row(
+            ctx.button("Smaller", () -> {
+                if (meta != null) setDefaultScale(meta.defaultScale / SCALE_STEP);
+            }),
+            ctx.button("Bigger", () -> {
+                if (meta != null) setDefaultScale(meta.defaultScale * SCALE_STEP);
+            }),
+            ctx.button("1x", () -> setDefaultScale(1f)))).row();
+
         panel.add(ctx.button("Save asset (Ctrl+S)", this::save)).padTop(14).row();
         toolButtons[0].setChecked(true);
     }
@@ -208,20 +230,37 @@ class AssetEditMode extends EditorMode {
         if (hasMeta) {
             thresholdSlider.setValue(meta.keyThreshold);
             softnessSlider.setValue(meta.keySoftness);
+            defaultScaleSlider.setValue(meta.defaultScale);
         }
         syncingUi = false;
         updateSliderLabels();
         updateInfo();
     }
 
+    /** Size new copies of this asset get when spawned in the scene. */
+    private void setDefaultScale(float scale) {
+        if (meta == null) return;
+        meta.defaultScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+        syncingUi = true;
+        defaultScaleSlider.setValue(meta.defaultScale);
+        syncingUi = false;
+        updateSliderLabels();
+        markMetaDirty();
+    }
+
     private void updateSliderLabels() {
         if (meta == null) return;
+        int sceneWidth = previewBase == null ? 0 : Math.round(previewBase.getWidth() * meta.defaultScale);
+        int sceneHeight = previewBase == null ? 0 : Math.round(previewBase.getHeight() * meta.defaultScale);
+        defaultScaleLabel.setText(String.format("Default: %.2fx  (%dx%d in the scene)", meta.defaultScale,
+            sceneWidth, sceneHeight));
         thresholdLabel.setText(String.format("Threshold: %.2f  (lower removes more)", meta.keyThreshold));
         softnessLabel.setText(String.format("Edge softness: %.2f", meta.keySoftness));
     }
 
     private void updateInfo() {
         updateShapeLabel();
+        updateSliderLabels();
         if (current == null || previewBase == null) {
             assetInfo.setText("No asset selected");
             checkInfo.setText("");

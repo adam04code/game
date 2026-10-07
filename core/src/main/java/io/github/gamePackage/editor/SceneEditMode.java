@@ -29,9 +29,9 @@ import java.util.Comparator;
  */
 class SceneEditMode extends EditorMode {
     private static final String SCENE_PATH = "data/editor_scene.json";
-    private static final float MIN_SCALE = 0.1f;
-    private static final float MAX_SCALE = 4f;
-    private static final float SCALE_STEP = 1.1f;
+    private static final float MIN_SCALE = AssetEditMode.MIN_SCALE;
+    private static final float MAX_SCALE = AssetEditMode.MAX_SCALE;
+    private static final float SCALE_STEP = AssetEditMode.SCALE_STEP;
 
     public static class SceneFile {
         public String terrain;
@@ -87,7 +87,7 @@ class SceneEditMode extends EditorMode {
     // ---------------------------------------------------------------- panel
 
     private void buildPanel() {
-        panel.top();
+        panel.top().padRight(10);
         panel.defaults().growX().padBottom(5);
 
         ctx.section(panel, "Place");
@@ -114,9 +114,7 @@ class SceneEditMode extends EditorMode {
         TextButton smaller = selectionButton("Smaller (-)", () -> stepScale(1f / SCALE_STEP));
         TextButton bigger = selectionButton("Bigger (+)", () -> stepScale(SCALE_STEP));
         panel.add(ctx.row(smaller, bigger)).row();
-        TextButton setDefault = selectionButton("Set as default", this::saveDefaultScale);
-        TextButton resetDefault = selectionButton("Reset to default", this::resetToDefaultScale);
-        panel.add(ctx.row(setDefault, resetDefault)).row();
+        panel.add(selectionButton("Reset to default size", this::resetToDefaultScale)).row();
 
         ctx.section(panel, "View");
         TextButton shadowsButton = ctx.toggle("Shadows");
@@ -134,7 +132,8 @@ class SceneEditMode extends EditorMode {
 
         panel.add(ctx.button("Save scene (Ctrl+S)", this::save)).padTop(14).row();
         panel.add(ctx.help("Click an asset in the list, then click the map to spawn it; right-click or Esc stops. "
-            + "Clicking a terrain in the list switches to it. "
+            + "Clicking a terrain in the list switches to it. New copies spawn at the asset's default size "
+            + "(set in Edit Asset). "
             + "Drag objects to move them, drag empty ground to pan, wheel to zoom.")).padTop(6).row();
     }
 
@@ -215,22 +214,6 @@ class SceneEditMode extends EditorMode {
 
     private void stepScale(float factor) {
         if (selected != null) setScale(selected.scale * factor);
-    }
-
-    /** Makes the selected object's size the default for its asset (used when spawning it). */
-    private void saveDefaultScale() {
-        if (selected == null) return;
-        AssetMeta meta = ctx.assets.meta.getOrCreate(selected.assetId);
-        meta.defaultScale = selected.scale;
-        try {
-            ctx.assets.meta.save();
-        } catch (Exception e) {
-            Gdx.app.error("AssetEditor", "Saving the default size failed", e);
-            ctx.setStatus("Saving the default size failed: " + e.getMessage());
-            return;
-        }
-        ctx.setStatus(String.format("Default size of %s is now %.2fx", selected.asset.name, meta.defaultScale));
-        syncSelection();
     }
 
     private void resetToDefaultScale() {

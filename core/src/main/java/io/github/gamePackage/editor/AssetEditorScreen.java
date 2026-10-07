@@ -71,6 +71,7 @@ public class AssetEditorScreen extends ScreenAdapter {
     private int greenRemoved;
     private Table overlay;
     private Label overlayLabel;
+    private Label zoomLabel;
 
     private boolean modeDragging;
     private boolean panning;
@@ -101,12 +102,14 @@ public class AssetEditorScreen extends ScreenAdapter {
         @Override
         protected GlyphLayout drawItem(Batch batch, BitmapFont font, int index, AssetListItem item, float x, float y,
                                        float width) {
-            if (item.issues != null) {
-                float alpha = font.getColor().a;
-                font.setColor(EditorContext.FLAG_COLOR.r, EditorContext.FLAG_COLOR.g, EditorContext.FLAG_COLOR.b,
-                    alpha);
-            }
-            return super.drawItem(batch, font, index, item, x, y, width);
+            if (item.issues == null) return super.drawItem(batch, font, index, item, x, y, width);
+            // List only resets the colour after selected rows, so restore it or the rows below stay orange.
+            Color normal = new Color(font.getColor());
+            font.setColor(EditorContext.FLAG_COLOR.r, EditorContext.FLAG_COLOR.g, EditorContext.FLAG_COLOR.b,
+                normal.a);
+            GlyphLayout layout = super.drawItem(batch, font, index, item, x, y, width);
+            font.setColor(normal);
+            return layout;
         }
     }
 
@@ -262,16 +265,17 @@ public class AssetEditorScreen extends ScreenAdapter {
 
         Table right = new Table();
         right.setBackground(ctx.skin.getDrawable("panel"));
-        right.pad(10);
+        right.pad(10).padRight(4);
         modePanelPane = new ScrollPane(null, ctx.skin);
         modePanelPane.setFadeScrollBars(false);
         modePanelPane.setFlickScroll(false);
         modePanelPane.setScrollingDisabled(true, false);
+        modePanelPane.setScrollbarsOnTop(false);
         right.add(modePanelPane).grow().row();
         right.add(ctx.status).growX().padTop(8);
 
         root.add(left).width(EditorContext.LEFT_WIDTH).growY();
-        root.add().grow();
+        root.add(buildZoomBar()).expand().top().left().pad(10);
         root.add(right).width(EditorContext.RIGHT_WIDTH).growY();
         showModeUi();
 
@@ -294,6 +298,26 @@ public class AssetEditorScreen extends ScreenAdapter {
         overlayLabel = new Label("", ctx.skin);
         overlayLabel.setAlignment(Align.center);
         overlay.add(overlayLabel);
+    }
+
+    /** Zoom buttons floating over the top-left of the canvas. */
+    private Table buildZoomBar() {
+        zoomLabel = new Label("", ctx.skin, "dim");
+        Table bar = new Table();
+        bar.setBackground(ctx.skin.getDrawable("panel"));
+        bar.pad(4);
+        bar.defaults().width(40).padRight(4);
+        bar.add(ctx.button("-", () -> zoomCanvasCentre(1f)));
+        bar.add(ctx.button("+", () -> zoomCanvasCentre(-1f)));
+        bar.add(ctx.button("Fit", () -> mode.fitCamera())).width(48);
+        bar.add(zoomLabel).width(54).padLeft(4).padRight(2);
+        return bar;
+    }
+
+    private void zoomCanvasCentre(float amount) {
+        int left = (int) EditorContext.LEFT_WIDTH;
+        int canvasWidth = Gdx.graphics.getWidth() - left - (int) EditorContext.RIGHT_WIDTH;
+        ctx.cameraControl.zoomAt(left + canvasWidth / 2, Gdx.graphics.getHeight() / 2, amount * 2f);
     }
 
     private void showModeUi() {
@@ -429,7 +453,18 @@ public class AssetEditorScreen extends ScreenAdapter {
 
     @Override
     public void show() {
-        Gdx.input.setInputProcessor(new InputMultiplexer(stage, new CanvasInput()));
+        // The wheel goes to the canvas before the stage: a side panel keeps the wheel ("scroll focus") after it is
+        // clicked, which would otherwise scroll the list instead of zooming.
+        InputAdapter zoomInput = new InputAdapter() {
+            @Override
+            public boolean scrolled(float amountX, float amountY) {
+                int x = Gdx.input.getX();
+                if (starting() || !ctx.inCanvas(x) || amountY == 0f) return false;
+                ctx.cameraControl.zoomAt(x, Gdx.input.getY(), amountY);
+                return true;
+            }
+        };
+        Gdx.input.setInputProcessor(new InputMultiplexer(zoomInput, stage, new CanvasInput()));
         beginStartup();
     }
 
@@ -449,6 +484,7 @@ public class AssetEditorScreen extends ScreenAdapter {
         ctx.shapes.setProjectionMatrix(ctx.camera.combined);
         mode.render();
 
+        zoomLabel.setText(Math.round(100f / ctx.camera.zoom) + "%");
         stage.getViewport().apply();
         stage.act(delta);
         stage.draw();
@@ -514,14 +550,6 @@ public class AssetEditorScreen extends ScreenAdapter {
             modeDragging = false;
             panning = false;
             return handled;
-        }
-
-        @Override
-        public boolean scrolled(float amountX, float amountY) {
-            int x = Gdx.input.getX();
-            if (!ctx.inCanvas(x) || amountY == 0f) return false;
-            ctx.cameraControl.zoomAt(x, Gdx.input.getY(), amountY);
-            return true;
         }
 
         @Override

@@ -23,7 +23,7 @@ import java.util.Arrays;
 /** What both editor modes share: the canvas camera, renderers, and small helpers for building the panels. */
 class EditorContext {
     static final float LEFT_WIDTH = 320f;
-    static final float RIGHT_WIDTH = 300f;
+    static final float RIGHT_WIDTH = 320f;
     static final float HANDLE_PIXELS = 6f;
 
     static final Color COLLISION_COLOR = new Color(1f, 0.3f, 0.3f, 1f);
